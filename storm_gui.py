@@ -34,6 +34,21 @@ try:
     import matplotlib.pyplot as plt
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
     import tensorflow as tf
+    
+    # Configure GPU if available
+    gpus = tf.config.experimental.list_physical_devices('GPU')
+    if gpus:
+        try:
+            # Enable memory growth to avoid allocating all GPU memory at once
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+            print(f"GPU(s) detected and configured: {len(gpus)} device(s)")
+            print(f"GPU devices: {[gpu.name for gpu in gpus]}")
+        except RuntimeError as e:
+            print(f"GPU configuration error: {e}")
+    else:
+        print("No GPU detected - using CPU (training will be slow)")
+        
 except ImportError as e:
     print(f"Import error: {e}")
     print("Please ensure you're running in the storm_env virtual environment")
@@ -374,6 +389,27 @@ class STORMApp:
         
         # Start queue processing
         self.process_queue()
+        
+        # Log initial GPU status
+        self.root.after(1000, self.log_initial_gpu_status)  # Delay to ensure GUI is ready
+    
+    def log_initial_gpu_status(self):
+        """Log GPU status when GUI starts"""
+        self.log_message("=== STORM Microscopy GUI Started ===")
+        
+        # Check TensorFlow and GPU status
+        self.log_message(f"TensorFlow version: {tf.__version__}")
+        
+        gpu_devices = tf.config.list_physical_devices('GPU')
+        if gpu_devices:
+            self.log_message(f"✅ {len(gpu_devices)} GPU(s) available for training:")
+            for i, gpu in enumerate(gpu_devices):
+                self.log_message(f"   GPU {i}: {gpu.name}")
+        else:
+            self.log_message("⚠️  No GPU detected - training will be slow on CPU")
+            self.log_message("   Ensure CUDA is installed and WSL can access GPU")
+        
+        self.log_message("Ready to use. Select TIFF files to begin.")
     
     def setup_logging(self):
         """Setup logging to redirect to GUI"""
@@ -596,6 +632,8 @@ class STORMApp:
         
         self.stop_button = ttk.Button(button_frame, text="Stop Training", command=self.stop_training, state=tk.DISABLED)
         self.stop_button.pack(side=tk.LEFT, padx=(0, 10))
+        
+        ttk.Button(button_frame, text="Check GPU", command=self.check_gpu_status).pack(side=tk.LEFT, padx=(0, 10))
         
         # Progress bar
         progress_frame = ttk.LabelFrame(self.scrollable_frame, text="Training Progress", padding=10)
@@ -1226,11 +1264,65 @@ class STORMApp:
         )
         self.training_thread.start()
     
+    def check_gpu_status(self):
+        """Check and log GPU availability and status"""
+        try:
+            # Check if GPU is available
+            gpu_available = tf.config.list_physical_devices('GPU')
+            
+            if gpu_available:
+                self.log_message(f"✅ GPU detected: {len(gpu_available)} device(s)")
+                for i, gpu in enumerate(gpu_available):
+                    self.log_message(f"   GPU {i}: {gpu.name}")
+                
+                # Check if TensorFlow can actually use the GPU
+                with tf.device('/GPU:0'):
+                    test_tensor = tf.constant([[1.0, 2.0], [3.0, 4.0]])
+                    result = tf.matmul(test_tensor, test_tensor)
+                    self.log_message("✅ GPU computation test successful")
+                
+                # Log GPU memory info
+                try:
+                    gpu_details = tf.config.experimental.get_device_details(gpu_available[0])
+                    if 'device_name' in gpu_details:
+                        self.log_message(f"   GPU Name: {gpu_details['device_name']}")
+                except:
+                    pass
+                    
+                return True
+            else:
+                self.log_message("❌ No GPU detected - training will use CPU (very slow)")
+                self.log_message("   Make sure CUDA is properly installed and configured")
+                return False
+                
+        except Exception as e:
+            self.log_message(f"❌ GPU check failed: {str(e)}")
+            self.log_message("   Training will use CPU (very slow)")
+            return False
+    
     def train_model_thread(self, selected_files):
         """Multi-stage training thread function"""
         try:
             # Reset stop flag
             self.training_stop_requested = False
+            
+            # Check GPU status first
+            self.log_message("=== System Check ===")
+            gpu_available = self.check_gpu_status()
+            
+            if not gpu_available:
+                # Ask user if they want to continue with CPU
+                response = messagebox.askyesno(
+                    "No GPU Detected", 
+                    "No GPU detected! Training will be very slow on CPU.\n\n"
+                    "Do you want to continue anyway?\n\n"
+                    "Click 'No' to cancel and check your CUDA installation."
+                )
+                if not response:
+                    self.log_message("Training cancelled by user due to no GPU")
+                    return
+                else:
+                    self.log_message("User chose to continue training on CPU")
             
             # Check if we have pre-processed datasets from "Save Cutouts"
             if not self.training_data_ready or self.train_ds is None or self.val_ds is None:
