@@ -72,23 +72,45 @@ class WindowsPathHelper:
     def get_windows_username():
         """Get the current Windows username"""
         try:
-            # Try to get username from environment
-            username = os.environ.get('USER', os.environ.get('USERNAME', ''))
-            if username:
-                return username
-            
-            # Alternative: try to detect from /mnt/c/Users directory (WSL)
+            # In WSL, we need to detect the actual Windows user, not the WSL user
             if WindowsPathHelper.is_wsl():
                 users_dir = "/mnt/c/Users"
                 if os.path.exists(users_dir):
-                    users = [d for d in os.listdir(users_dir) 
-                            if os.path.isdir(os.path.join(users_dir, d)) 
-                            and d not in ['Public', 'Default', 'All Users', 'Default User']]
-                    if users:
-                        return users[0]  # Return first non-system user
+                    try:
+                        users = os.listdir(users_dir)
+                        # Filter to real user accounts (exclude system accounts and temp files)
+                        real_users = []
+                        for d in users:
+                            user_path = os.path.join(users_dir, d)
+                            if (os.path.isdir(user_path) and 
+                                d not in ['Public', 'Default', 'All Users', 'Default User'] and
+                                not d.startswith('TEMP') and 
+                                not d.startswith('UMFD') and
+                                d != 'WsiAccount' and
+                                not d.endswith('.ini')):
+                                # Check if it has typical user directories
+                                if (os.path.exists(os.path.join(user_path, 'Desktop')) or
+                                    os.path.exists(os.path.join(user_path, 'Documents'))):
+                                    real_users.append(d)
+                        
+                        if real_users:
+                            return real_users[0]  # Return first real user
+                    except PermissionError:
+                        # If we can't list users, try common usernames
+                        common_names = ['milab', 'user', 'admin', 'administrator']
+                        for name in common_names:
+                            test_path = f"/mnt/c/Users/{name}/Desktop"
+                            if os.path.exists(test_path):
+                                return name
+            else:
+                # Running on Windows directly
+                username = os.environ.get('USERNAME', os.environ.get('USER', ''))
+                if username:
+                    return username
             
             return None
-        except:
+        except Exception as e:
+            print(f"Error detecting Windows username: {e}")
             return None
     
     @staticmethod
@@ -100,10 +122,10 @@ class WindowsPathHelper:
                 desktop_path = f"/mnt/c/Users/{username}/Desktop"
                 if os.path.exists(desktop_path):
                     return desktop_path
+            # Fallback to a safe directory
             return "/mnt/c/Users"
         else:
             # Running on Windows directly
-            import os
             desktop = os.path.join(os.path.expanduser("~"), "Desktop")
             if os.path.exists(desktop):
                 return desktop
@@ -121,7 +143,6 @@ class WindowsPathHelper:
             return "/mnt/c/Users"
         else:
             # Running on Windows directly
-            import os
             documents = os.path.join(os.path.expanduser("~"), "Documents")
             if os.path.exists(documents):
                 return documents
@@ -139,7 +160,6 @@ class WindowsPathHelper:
             return "/mnt/c/Users"
         else:
             # Running on Windows directly
-            import os
             downloads = os.path.join(os.path.expanduser("~"), "Downloads")
             if os.path.exists(downloads):
                 return downloads
@@ -149,7 +169,13 @@ class WindowsPathHelper:
     def get_default_data_path():
         """Get default path for data browsing"""
         if WindowsPathHelper.is_wsl():
-            return "/mnt/c"
+            # Try to go directly to a user directory to avoid permission issues with C: root
+            username = WindowsPathHelper.get_windows_username()
+            if username:
+                user_path = f"/mnt/c/Users/{username}"
+                if os.path.exists(user_path):
+                    return user_path
+            return "/mnt/c/Users"
         else:
             return "C:\\"
 
@@ -567,12 +593,26 @@ class STORMApp:
     
     def set_directory(self, path):
         """Set directory and optionally scan"""
-        if os.path.exists(path):
-            self.data_dir_var.set(path)
-            # Auto-scan without asking
-            self.scan_tiff_files()
-        else:
-            messagebox.showwarning("Warning", f"Directory {path} not found")
+        try:
+            if os.path.exists(path):
+                # Test if we can actually access the directory
+                try:
+                    os.listdir(path)
+                    self.data_dir_var.set(path)
+                    # Auto-scan without asking
+                    self.scan_tiff_files()
+                except PermissionError:
+                    messagebox.showerror("Permission Error", 
+                                       f"Cannot access directory: {path}\n"
+                                       f"Permission denied. Try a different location.")
+                except Exception as e:
+                    messagebox.showerror("Error", 
+                                       f"Error accessing directory: {path}\n"
+                                       f"Error: {str(e)}")
+            else:
+                messagebox.showwarning("Warning", f"Directory {path} not found")
+        except Exception as e:
+            messagebox.showerror("Error", f"Unexpected error: {str(e)}")
     
     def browse_data_directory(self):
         """Browse for data directory with better error handling"""
