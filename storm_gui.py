@@ -457,6 +457,13 @@ class STORMApp:
         # Status label
         self.viz_status_label = ttk.Label(viz_button_frame, text="Select a TIFF file to visualize peak detection")
         self.viz_status_label.pack(side=tk.LEFT)
+        
+        # Log section (shared with training tab)
+        log_frame = ttk.LabelFrame(peak_frame, text="Log", padding=10)
+        log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        self.log_text_peak = scrolledtext.ScrolledText(log_frame, height=15, state=tk.DISABLED)
+        self.log_text_peak.pack(fill=tk.BOTH, expand=True)
     
     def create_data_tab(self, notebook):
         """Create data selection and preview tab"""
@@ -576,8 +583,8 @@ class STORMApp:
         self.progress_label = ttk.Label(progress_frame, text="Ready to train")
         self.progress_label.pack()
         
-        # Training log
-        log_frame = ttk.LabelFrame(train_frame, text="Training Log", padding=10)
+        # Log
+        log_frame = ttk.LabelFrame(train_frame, text="Log", padding=10)
         log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
         self.log_text = scrolledtext.ScrolledText(log_frame, height=15, state=tk.DISABLED)
@@ -913,10 +920,11 @@ class STORMApp:
         self.train_button.config(state=tk.DISABLED)
         self.stop_button.config(state=tk.NORMAL)
         
-        # Clear log
-        self.log_text.config(state=tk.NORMAL)
-        self.log_text.delete(1.0, tk.END)
-        self.log_text.config(state=tk.DISABLED)
+        # Clear both log windows
+        for log_widget in [self.log_text, self.log_text_peak]:
+            log_widget.config(state=tk.NORMAL)
+            log_widget.delete(1.0, tk.END)
+            log_widget.config(state=tk.DISABLED)
         
         # Log which file is being used for training
         self.log_message(f"Starting training with single stack: {selected_files[0].name}")
@@ -1081,10 +1089,12 @@ class STORMApp:
                     self.progress_label.config(text=message)
                 
                 elif msg_type == 'log':
-                    self.log_text.config(state=tk.NORMAL)
-                    self.log_text.insert(tk.END, data + '\n')
-                    self.log_text.see(tk.END)
-                    self.log_text.config(state=tk.DISABLED)
+                    # Update both log windows (training tab and peak configuration tab)
+                    for log_widget in [self.log_text, self.log_text_peak]:
+                        log_widget.config(state=tk.NORMAL)
+                        log_widget.insert(tk.END, data + '\n')
+                        log_widget.see(tk.END)
+                        log_widget.config(state=tk.DISABLED)
                 
                 elif msg_type == 'training_complete':
                     messagebox.showinfo("Success", data)
