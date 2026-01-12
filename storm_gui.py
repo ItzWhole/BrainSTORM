@@ -413,7 +413,7 @@ class STORMApp:
         quick_frame.pack(fill=tk.X, pady=(0, 5))
         
         ttk.Label(quick_frame, text="Quick Access:").pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Button(quick_frame, text="C: Drive", command=lambda: self.set_directory(WindowsPathHelper.get_default_data_path())).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(quick_frame, text="C: Drive", command=lambda: self.set_directory("/mnt/c")).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(quick_frame, text="Desktop", command=self.go_to_desktop).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(quick_frame, text="Documents", command=self.go_to_documents).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(quick_frame, text="Downloads", command=self.go_to_downloads).pack(side=tk.LEFT, padx=(0, 5))
@@ -665,8 +665,21 @@ class STORMApp:
             self.tiff_files = find_tiff_files(Path(data_dir))
             self.update_file_list()
             self.log_message(f"Found {len(self.tiff_files)} TIFF files in {data_dir}")
+        except PermissionError as e:
+            # Handle permission errors gracefully
+            self.tiff_files = []
+            self.update_file_list()
+            messagebox.showwarning("Permission Error", 
+                                 f"Some files in {data_dir} could not be accessed due to permission restrictions.\n"
+                                 f"Try selecting a more specific subdirectory.\n\n"
+                                 f"Error details: {str(e)}")
+            self.log_message(f"Permission error scanning {data_dir}: {str(e)}")
         except Exception as e:
+            # Handle other errors
+            self.tiff_files = []
+            self.update_file_list()
             messagebox.showerror("Error", f"Error scanning directory: {str(e)}")
+            self.log_message(f"Error scanning {data_dir}: {str(e)}")
     
     def update_file_list(self):
         """Update the file list display"""
