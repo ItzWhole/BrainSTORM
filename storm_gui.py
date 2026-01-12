@@ -35,6 +35,55 @@ try:
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
     import tensorflow as tf
     
+    # Auto-fix CUDA library path issues
+    def setup_cuda_environment():
+        """Automatically setup CUDA environment variables"""
+        import os
+        
+        # Common CUDA library paths
+        cuda_paths = [
+            '/usr/local/cuda/lib64',
+            '/usr/local/cuda-11.8/lib64',
+            '/usr/local/cuda-11/lib64',
+            '/opt/cuda/lib64',
+            '/usr/lib/x86_64-linux-gnu'
+        ]
+        
+        # Find existing CUDA libraries
+        existing_cuda_paths = []
+        for path in cuda_paths:
+            if os.path.exists(path):
+                # Check if it contains CUDA libraries
+                try:
+                    files = os.listdir(path)
+                    if any('libcuda' in f or 'libcublas' in f or 'libcudnn' in f for f in files):
+                        existing_cuda_paths.append(path)
+                except:
+                    pass
+        
+        if existing_cuda_paths:
+            # Update LD_LIBRARY_PATH
+            current_ld_path = os.environ.get('LD_LIBRARY_PATH', '')
+            new_paths = []
+            
+            for path in existing_cuda_paths:
+                if path not in current_ld_path:
+                    new_paths.append(path)
+            
+            if new_paths:
+                if current_ld_path:
+                    os.environ['LD_LIBRARY_PATH'] = ':'.join(new_paths) + ':' + current_ld_path
+                else:
+                    os.environ['LD_LIBRARY_PATH'] = ':'.join(new_paths)
+                
+                print(f"Auto-configured CUDA paths: {new_paths}")
+                return True
+        
+        return False
+    
+    # Try to auto-fix CUDA setup
+    cuda_fixed = setup_cuda_environment()
+    
     # Configure GPU if available
     gpus = tf.config.experimental.list_physical_devices('GPU')
     if gpus:
@@ -48,6 +97,9 @@ try:
             print(f"GPU configuration error: {e}")
     else:
         print("No GPU detected - using CPU (training will be slow)")
+        if cuda_fixed:
+            print("CUDA paths were auto-configured, but GPU still not detected")
+            print("You may need to restart the application for changes to take effect")
         
 except ImportError as e:
     print(f"Import error: {e}")
@@ -637,6 +689,8 @@ class STORMApp:
         self.stop_button.pack(side=tk.LEFT, padx=(0, 10))
         
         ttk.Button(button_frame, text="Check GPU", command=self.check_gpu_status).pack(side=tk.LEFT, padx=(0, 10))
+        
+        ttk.Button(button_frame, text="Fix CUDA Path", command=self.fix_cuda_path).pack(side=tk.LEFT, padx=(0, 10))
         
         # Progress bar
         progress_frame = ttk.LabelFrame(self.scrollable_frame, text="Training Progress", padding=10)
@@ -1370,6 +1424,106 @@ class STORMApp:
             self.log_message("   Training will use CPU (very slow)")
             return False
     
+    def fix_cuda_path(self):
+        """Attempt to fix CUDA library path issues"""
+        self.log_message("=== Attempting CUDA Path Fix ===")
+        
+        try:
+            import os
+            
+            # Common CUDA library paths
+            cuda_paths = [
+                '/usr/local/cuda/lib64',
+                '/usr/local/cuda-11.8/lib64', 
+                '/usr/local/cuda-11/lib64',
+                '/opt/cuda/lib64',
+                '/usr/lib/x86_64-linux-gnu'
+            ]
+            
+            self.log_message("Searching for CUDA libraries...")
+            
+            # Find existing CUDA libraries
+            existing_cuda_paths = []
+            for path in cuda_paths:
+                if os.path.exists(path):
+                    try:
+                        files = os.listdir(path)
+                        cuda_libs = [f for f in files if 'libcuda' in f or 'libcublas' in f or 'libcudnn' in f]
+                        if cuda_libs:
+                            existing_cuda_paths.append(path)
+                            self.log_message(f"✅ Found CUDA libraries in: {path}")
+                            self.log_message(f"   Libraries: {cuda_libs[:3]}{'...' if len(cuda_libs) > 3 else ''}")
+                    except Exception as e:
+                        self.log_message(f"❌ Cannot access {path}: {str(e)}")
+            
+            if existing_cuda_paths:
+                # Update LD_LIBRARY_PATH
+                current_ld_path = os.environ.get('LD_LIBRARY_PATH', '')
+                new_paths = []
+                
+                for path in existing_cuda_paths:
+                    if path not in current_ld_path:
+                        new_paths.append(path)
+                
+                if new_paths:
+                    if current_ld_path:
+                        new_ld_path = ':'.join(new_paths) + ':' + current_ld_path
+                    else:
+                        new_ld_path = ':'.join(new_paths)
+                    
+                    os.environ['LD_LIBRARY_PATH'] = new_ld_path
+                    self.log_message(f"✅ Updated LD_LIBRARY_PATH with: {new_paths}")
+                    self.log_message(f"   New LD_LIBRARY_PATH: {new_ld_path}")
+                    
+                    # Test if GPU is now detected
+                    self.log_message("Testing GPU detection after path fix...")
+                    
+                    # Simple test - check if GPU is now available
+                    try:
+                        gpus = tf.config.list_physical_devices('GPU')
+                        if gpus:
+                            self.log_message(f"🎉 SUCCESS! GPU now detected: {len(gpus)} device(s)")
+                            for i, gpu in enumerate(gpus):
+                                self.log_message(f"   GPU {i}: {gpu.name}")
+                            
+                            messagebox.showinfo("CUDA Fix Successful!", 
+                                              f"GPU now detected!\n\n"
+                                              f"Found {len(gpus)} GPU(s)\n"
+                                              f"Training will now use GPU acceleration.")
+                        else:
+                            self.log_message("❌ GPU still not detected after path fix")
+                            self.log_message("   You may need to restart the application")
+                            messagebox.showinfo("Restart Required", 
+                                              "CUDA paths updated but GPU not yet detected.\n\n"
+                                              "Please restart the application to apply changes.")
+                    except Exception as test_error:
+                        self.log_message(f"❌ Error testing GPU after fix: {str(test_error)}")
+                        messagebox.showinfo("Restart Required", 
+                                          "CUDA paths updated.\n\n"
+                                          "Please restart the application to apply changes.")
+                else:
+                    self.log_message("✅ CUDA paths already configured correctly")
+                    self.log_message("   GPU detection issue may be elsewhere")
+            else:
+                self.log_message("❌ No CUDA libraries found in common locations")
+                self.log_message("   CUDA toolkit may not be properly installed")
+                
+                # Suggest installation
+                self.log_message("=== Installation Suggestions ===")
+                self.log_message("1. Install CUDA toolkit: sudo apt install nvidia-cuda-toolkit")
+                self.log_message("2. Or download from: https://developer.nvidia.com/cuda-downloads")
+                self.log_message("3. Ensure WSL 2 with GPU support is enabled")
+                
+                messagebox.showwarning("CUDA Not Found", 
+                                     "CUDA libraries not found in common locations.\n\n"
+                                     "You may need to install the CUDA toolkit:\n"
+                                     "sudo apt install nvidia-cuda-toolkit\n\n"
+                                     "Check the log for detailed information.")
+                
+        except Exception as e:
+            self.log_message(f"❌ CUDA path fix failed: {str(e)}")
+            messagebox.showerror("Fix Failed", f"Could not fix CUDA paths: {str(e)}")
+
     def train_model_thread(self, selected_files):
         """Multi-stage training thread function"""
         try:
