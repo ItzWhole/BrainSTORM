@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-STORM Microscopy GUI Application
+STORM Microscopy GUI Application - Fixed Version
 
 A user-friendly graphical interface for STORM microscopy analysis with
-file selection, training controls, and real-time progress monitoring.
+improved file browsing and Windows path handling.
 
 Author: ItzWhole
 """
@@ -59,6 +59,99 @@ class STORMConfig:
         self.data_path = None
         self.output_path = Path("./output")
         self.model_path = None
+
+class WindowsPathHelper:
+    """Helper class for Windows path handling in WSL and Windows"""
+    
+    @staticmethod
+    def is_wsl():
+        """Check if running in WSL environment"""
+        return os.path.exists("/mnt/c")
+    
+    @staticmethod
+    def get_windows_username():
+        """Get the current Windows username"""
+        try:
+            # Try to get username from environment
+            username = os.environ.get('USER', os.environ.get('USERNAME', ''))
+            if username:
+                return username
+            
+            # Alternative: try to detect from /mnt/c/Users directory (WSL)
+            if WindowsPathHelper.is_wsl():
+                users_dir = "/mnt/c/Users"
+                if os.path.exists(users_dir):
+                    users = [d for d in os.listdir(users_dir) 
+                            if os.path.isdir(os.path.join(users_dir, d)) 
+                            and d not in ['Public', 'Default', 'All Users', 'Default User']]
+                    if users:
+                        return users[0]  # Return first non-system user
+            
+            return None
+        except:
+            return None
+    
+    @staticmethod
+    def get_desktop_path():
+        """Get Windows Desktop path"""
+        if WindowsPathHelper.is_wsl():
+            username = WindowsPathHelper.get_windows_username()
+            if username:
+                desktop_path = f"/mnt/c/Users/{username}/Desktop"
+                if os.path.exists(desktop_path):
+                    return desktop_path
+            return "/mnt/c/Users"
+        else:
+            # Running on Windows directly
+            import os
+            desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+            if os.path.exists(desktop):
+                return desktop
+            return os.path.expanduser("~")
+    
+    @staticmethod
+    def get_documents_path():
+        """Get Windows Documents path"""
+        if WindowsPathHelper.is_wsl():
+            username = WindowsPathHelper.get_windows_username()
+            if username:
+                docs_path = f"/mnt/c/Users/{username}/Documents"
+                if os.path.exists(docs_path):
+                    return docs_path
+            return "/mnt/c/Users"
+        else:
+            # Running on Windows directly
+            import os
+            documents = os.path.join(os.path.expanduser("~"), "Documents")
+            if os.path.exists(documents):
+                return documents
+            return os.path.expanduser("~")
+    
+    @staticmethod
+    def get_downloads_path():
+        """Get Windows Downloads path"""
+        if WindowsPathHelper.is_wsl():
+            username = WindowsPathHelper.get_windows_username()
+            if username:
+                downloads_path = f"/mnt/c/Users/{username}/Downloads"
+                if os.path.exists(downloads_path):
+                    return downloads_path
+            return "/mnt/c/Users"
+        else:
+            # Running on Windows directly
+            import os
+            downloads = os.path.join(os.path.expanduser("~"), "Downloads")
+            if os.path.exists(downloads):
+                return downloads
+            return os.path.expanduser("~")
+    
+    @staticmethod
+    def get_default_data_path():
+        """Get default path for data browsing"""
+        if WindowsPathHelper.is_wsl():
+            return "/mnt/c"
+        else:
+            return "C:\\"
 
 class LogHandler(logging.Handler):
     """Custom logging handler to redirect logs to GUI"""
@@ -289,10 +382,28 @@ class STORMApp:
         dir_frame = ttk.LabelFrame(data_frame, text="Data Directory", padding=10)
         dir_frame.pack(fill=tk.X, padx=10, pady=5)
         
+        # Add quick access buttons for common Windows locations
+        quick_frame = ttk.Frame(dir_frame)
+        quick_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        ttk.Label(quick_frame, text="Quick Access:").pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(quick_frame, text="C: Drive", command=lambda: self.set_directory(WindowsPathHelper.get_default_data_path())).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(quick_frame, text="Desktop", command=self.go_to_desktop).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(quick_frame, text="Documents", command=self.go_to_documents).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(quick_frame, text="Downloads", command=self.go_to_downloads).pack(side=tk.LEFT, padx=(0, 5))
+        
         self.data_dir_var = tk.StringVar()
-        ttk.Entry(dir_frame, textvariable=self.data_dir_var, width=60).pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Button(dir_frame, text="Browse", command=self.browse_data_directory).pack(side=tk.LEFT)
-        ttk.Button(dir_frame, text="Scan Files", command=self.scan_tiff_files).pack(side=tk.LEFT, padx=(10, 0))
+        # Set default to a common location
+        default_path = WindowsPathHelper.get_default_data_path()
+        if os.path.exists(default_path):
+            self.data_dir_var.set(default_path)
+        
+        entry_frame = ttk.Frame(dir_frame)
+        entry_frame.pack(fill=tk.X, pady=(5, 0))
+        
+        ttk.Entry(entry_frame, textvariable=self.data_dir_var, width=60).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(entry_frame, text="Browse", command=self.browse_data_directory).pack(side=tk.LEFT)
+        ttk.Button(entry_frame, text="Scan Files", command=self.scan_tiff_files).pack(side=tk.LEFT, padx=(10, 0))
         
         # File list
         files_frame = ttk.LabelFrame(data_frame, text="Available TIFF Files", padding=10)
@@ -306,6 +417,9 @@ class STORMApp:
             self.file_tree.heading(col, text=col)
             self.file_tree.column(col, width=150)
         
+        # Add double-click to toggle selection
+        self.file_tree.bind('<Double-1>', self.toggle_file_selection)
+        
         scrollbar = ttk.Scrollbar(files_frame, orient=tk.VERTICAL, command=self.file_tree.yview)
         self.file_tree.configure(yscrollcommand=scrollbar.set)
         
@@ -318,6 +432,7 @@ class STORMApp:
         
         ttk.Button(button_frame, text="Select All", command=self.select_all_files).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(button_frame, text="Clear Selection", command=self.clear_selection).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Toggle Selected", command=self.toggle_selected_files).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Preview Selected", command=self.preview_files).pack(side=tk.LEFT, padx=5)
     
     def create_training_tab(self, notebook):
@@ -435,12 +550,69 @@ class STORMApp:
         ttk.Button(config_buttons, text="Load Configuration", command=self.load_config).pack(side=tk.LEFT)
         ttk.Button(config_buttons, text="Reset to Defaults", command=self.reset_config).pack(side=tk.LEFT, padx=(10, 0))
     
-    def browse_data_directory(self):
-        """Browse for data directory"""
-        directory = filedialog.askdirectory(title="Select TIFF Data Directory")
-        if directory:
-            self.data_dir_var.set(directory)
+    def go_to_desktop(self):
+        """Navigate to Windows Desktop"""
+        desktop_path = WindowsPathHelper.get_desktop_path()
+        self.set_directory(desktop_path)
+    
+    def go_to_documents(self):
+        """Navigate to Windows Documents"""
+        docs_path = WindowsPathHelper.get_documents_path()
+        self.set_directory(docs_path)
+    
+    def go_to_downloads(self):
+        """Navigate to Windows Downloads"""
+        downloads_path = WindowsPathHelper.get_downloads_path()
+        self.set_directory(downloads_path)
+    
+    def set_directory(self, path):
+        """Set directory and optionally scan"""
+        if os.path.exists(path):
+            self.data_dir_var.set(path)
+            # Auto-scan without asking
             self.scan_tiff_files()
+        else:
+            messagebox.showwarning("Warning", f"Directory {path} not found")
+    
+    def browse_data_directory(self):
+        """Browse for data directory with better error handling"""
+        try:
+            # Force GUI update before opening dialog
+            self.root.update_idletasks()
+            
+            # Start browsing in appropriate location
+            initial_dir = WindowsPathHelper.get_default_data_path()
+            if not os.path.exists(initial_dir):
+                initial_dir = os.path.expanduser("~")  # Fallback to home directory
+            
+            directory = filedialog.askdirectory(
+                title="Select TIFF Data Directory", 
+                initialdir=initial_dir,
+                parent=self.root
+            )
+            
+            if directory:
+                self.data_dir_var.set(directory)
+                self.scan_tiff_files()
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Error opening file dialog: {str(e)}")
+            messagebox.showinfo("Alternative", 
+                              "You can type the path directly in the text field and click 'Scan Files'")
+    
+    def toggle_file_selection(self, event):
+        """Toggle file selection on double-click"""
+        item = self.file_tree.selection()[0]
+        values = list(self.file_tree.item(item, 'values'))
+        values[3] = "Yes" if values[3] == "No" else "No"
+        self.file_tree.item(item, values=values)
+    
+    def toggle_selected_files(self):
+        """Toggle selection for currently selected items"""
+        for item in self.file_tree.selection():
+            values = list(self.file_tree.item(item, 'values'))
+            values[3] = "Yes" if values[3] == "No" else "No"
+            self.file_tree.item(item, values=values)
     
     def scan_tiff_files(self):
         """Scan directory for TIFF files"""
@@ -452,7 +624,7 @@ class STORMApp:
         try:
             self.tiff_files = find_tiff_files(Path(data_dir))
             self.update_file_list()
-            self.log_message(f"Found {len(self.tiff_files)} TIFF files")
+            self.log_message(f"Found {len(self.tiff_files)} TIFF files in {data_dir}")
         except Exception as e:
             messagebox.showerror("Error", f"Error scanning directory: {str(e)}")
     
@@ -589,43 +761,67 @@ class STORMApp:
             messagebox.showwarning("Warning", "No trained model to save")
             return
         
-        filename = filedialog.asksaveasfilename(
-            title="Save Model",
-            defaultextension=".keras",
-            filetypes=[("Keras models", "*.keras"), ("All files", "*.*")]
-        )
-        
-        if filename:
-            try:
+        try:
+            self.root.update_idletasks()
+            
+            initial_dir = WindowsPathHelper.get_documents_path()
+            
+            filename = filedialog.asksaveasfilename(
+                title="Save Model",
+                initialdir=initial_dir,
+                defaultextension=".keras",
+                filetypes=[("Keras models", "*.keras"), ("All files", "*.*")],
+                parent=self.root
+            )
+            
+            if filename:
                 self.model.save(filename)
                 messagebox.showinfo("Success", f"Model saved to {filename}")
-            except Exception as e:
-                messagebox.showerror("Error", f"Error saving model: {str(e)}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error saving model: {str(e)}")
     
     def load_model(self):
         """Load trained model"""
-        filename = filedialog.askopenfilename(
-            title="Load Model",
-            filetypes=[("Keras models", "*.keras"), ("All files", "*.*")]
-        )
-        
-        if filename:
-            try:
+        try:
+            self.root.update_idletasks()
+            
+            initial_dir = WindowsPathHelper.get_documents_path()
+            
+            filename = filedialog.askopenfilename(
+                title="Load Model",
+                initialdir=initial_dir,
+                filetypes=[("Keras models", "*.keras"), ("All files", "*.*")],
+                parent=self.root
+            )
+            
+            if filename:
                 self.model = tf.keras.models.load_model(filename)
                 messagebox.showinfo("Success", f"Model loaded from {filename}")
                 self.log_message(f"Model loaded: {filename}")
-            except Exception as e:
-                messagebox.showerror("Error", f"Error loading model: {str(e)}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error loading model: {str(e)}")
     
     def browse_prediction_file(self):
-        """Browse for prediction file"""
-        filename = filedialog.askopenfilename(
-            title="Select TIFF file for prediction",
-            filetypes=[("TIFF files", "*.tif *.tiff"), ("All files", "*.*")]
-        )
-        
-        if filename:
-            self.pred_file_var.set(filename)
+        """Browse for prediction file with better error handling"""
+        try:
+            self.root.update_idletasks()
+            
+            initial_dir = WindowsPathHelper.get_default_data_path()
+            if not os.path.exists(initial_dir):
+                initial_dir = os.path.expanduser("~")
+            
+            filename = filedialog.askopenfilename(
+                title="Select TIFF file for prediction",
+                initialdir=initial_dir,
+                filetypes=[("TIFF files", "*.tif *.tiff"), ("All files", "*.*")],
+                parent=self.root
+            )
+            
+            if filename:
+                self.pred_file_var.set(filename)
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Error opening file dialog: {str(e)}")
     
     def make_prediction(self):
         """Make prediction on selected file"""
@@ -651,14 +847,20 @@ class STORMApp:
     
     def save_config(self):
         """Save configuration to file"""
-        filename = filedialog.asksaveasfilename(
-            title="Save Configuration",
-            defaultextension=".json",
-            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
-        )
-        
-        if filename:
-            try:
+        try:
+            self.root.update_idletasks()
+            
+            initial_dir = WindowsPathHelper.get_documents_path()
+            
+            filename = filedialog.asksaveasfilename(
+                title="Save Configuration",
+                initialdir=initial_dir,
+                defaultextension=".json",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+                parent=self.root
+            )
+            
+            if filename:
                 config_dict = {
                     'distance': self.distance_var.get(),
                     'epochs': self.epochs_var.get(),
@@ -672,18 +874,24 @@ class STORMApp:
                     json.dump(config_dict, f, indent=2)
                 
                 messagebox.showinfo("Success", f"Configuration saved to {filename}")
-            except Exception as e:
-                messagebox.showerror("Error", f"Error saving configuration: {str(e)}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error saving configuration: {str(e)}")
     
     def load_config(self):
         """Load configuration from file"""
-        filename = filedialog.askopenfilename(
-            title="Load Configuration",
-            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
-        )
-        
-        if filename:
-            try:
+        try:
+            self.root.update_idletasks()
+            
+            initial_dir = WindowsPathHelper.get_documents_path()
+            
+            filename = filedialog.askopenfilename(
+                title="Load Configuration",
+                initialdir=initial_dir,
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+                parent=self.root
+            )
+            
+            if filename:
                 with open(filename, 'r') as f:
                     config_dict = json.load(f)
                 
@@ -700,8 +908,8 @@ class STORMApp:
                         var.set(config_dict[param])
                 
                 messagebox.showinfo("Success", f"Configuration loaded from {filename}")
-            except Exception as e:
-                messagebox.showerror("Error", f"Error loading configuration: {str(e)}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error loading configuration: {str(e)}")
     
     def reset_config(self):
         """Reset configuration to defaults"""
