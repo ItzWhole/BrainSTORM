@@ -620,10 +620,15 @@ class STORMApp:
             # Force GUI update before opening dialog
             self.root.update_idletasks()
             
-            # Start browsing in appropriate location
-            initial_dir = WindowsPathHelper.get_default_data_path()
-            if not os.path.exists(initial_dir):
-                initial_dir = os.path.expanduser("~")  # Fallback to home directory
+            # Use current directory from text field as initial directory
+            current_dir = self.data_dir_var.get()
+            if current_dir and os.path.exists(current_dir):
+                initial_dir = current_dir
+            else:
+                # Fallback to default if current directory doesn't exist
+                initial_dir = WindowsPathHelper.get_default_data_path()
+                if not os.path.exists(initial_dir):
+                    initial_dir = os.path.expanduser("~")  # Final fallback to home directory
             
             directory = filedialog.askdirectory(
                 title="Select TIFF Data Directory", 
@@ -859,9 +864,15 @@ class STORMApp:
         try:
             self.root.update_idletasks()
             
-            initial_dir = WindowsPathHelper.get_default_data_path()
-            if not os.path.exists(initial_dir):
-                initial_dir = os.path.expanduser("~")
+            # Use current data directory as initial directory for consistency
+            current_dir = self.data_dir_var.get()
+            if current_dir and os.path.exists(current_dir):
+                initial_dir = current_dir
+            else:
+                # Fallback to default if current directory doesn't exist
+                initial_dir = WindowsPathHelper.get_default_data_path()
+                if not os.path.exists(initial_dir):
+                    initial_dir = os.path.expanduser("~")
             
             filename = filedialog.askopenfilename(
                 title="Select TIFF file for prediction",
