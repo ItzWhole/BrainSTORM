@@ -399,15 +399,18 @@ class STORMApp:
         
         # Check TensorFlow and GPU status
         self.log_message(f"TensorFlow version: {tf.__version__}")
+        self.log_message(f"TensorFlow built with CUDA: {tf.test.is_built_with_cuda()}")
         
         gpu_devices = tf.config.list_physical_devices('GPU')
         if gpu_devices:
             self.log_message(f"✅ {len(gpu_devices)} GPU(s) available for training:")
             for i, gpu in enumerate(gpu_devices):
                 self.log_message(f"   GPU {i}: {gpu.name}")
+            self.log_message("Ready for fast GPU training!")
         else:
-            self.log_message("⚠️  No GPU detected - training will be slow on CPU")
-            self.log_message("   Ensure CUDA is installed and WSL can access GPU")
+            self.log_message("⚠️  No GPU detected - training will use CPU (slower)")
+            self.log_message("   Click 'Check GPU' button for detailed diagnostics")
+            self.log_message("   App will still work, just slower for training")
         
         self.log_message("Ready to use. Select TIFF files to begin.")
     
@@ -1265,8 +1268,14 @@ class STORMApp:
         self.training_thread.start()
     
     def check_gpu_status(self):
-        """Check and log GPU availability and status"""
+        """Check and log GPU availability and status with detailed diagnostics"""
         try:
+            self.log_message("=== GPU Diagnostic Information ===")
+            
+            # Check TensorFlow build info
+            self.log_message(f"TensorFlow version: {tf.__version__}")
+            self.log_message(f"TensorFlow built with CUDA: {tf.test.is_built_with_cuda()}")
+            
             # Check if GPU is available
             gpu_available = tf.config.list_physical_devices('GPU')
             
@@ -1276,27 +1285,88 @@ class STORMApp:
                     self.log_message(f"   GPU {i}: {gpu.name}")
                 
                 # Check if TensorFlow can actually use the GPU
-                with tf.device('/GPU:0'):
-                    test_tensor = tf.constant([[1.0, 2.0], [3.0, 4.0]])
-                    result = tf.matmul(test_tensor, test_tensor)
-                    self.log_message("✅ GPU computation test successful")
-                
-                # Log GPU memory info
                 try:
-                    gpu_details = tf.config.experimental.get_device_details(gpu_available[0])
-                    if 'device_name' in gpu_details:
-                        self.log_message(f"   GPU Name: {gpu_details['device_name']}")
-                except:
-                    pass
+                    with tf.device('/GPU:0'):
+                        test_tensor = tf.constant([[1.0, 2.0], [3.0, 4.0]])
+                        result = tf.matmul(test_tensor, test_tensor)
+                        self.log_message("✅ GPU computation test successful")
                     
-                return True
+                    # Log GPU memory info
+                    try:
+                        gpu_details = tf.config.experimental.get_device_details(gpu_available[0])
+                        if 'device_name' in gpu_details:
+                            self.log_message(f"   GPU Name: {gpu_details['device_name']}")
+                    except:
+                        pass
+                        
+                    return True
+                    
+                except Exception as gpu_test_error:
+                    self.log_message(f"❌ GPU computation test failed: {str(gpu_test_error)}")
+                    self.log_message("   GPU detected but not usable for computation")
+                    return False
             else:
-                self.log_message("❌ No GPU detected - training will use CPU (very slow)")
-                self.log_message("   Make sure CUDA is properly installed and configured")
+                self.log_message("❌ No GPU detected by TensorFlow")
+                
+                # Additional diagnostics
+                self.log_message("=== Diagnostic Steps ===")
+                
+                # Check CUDA installation
+                try:
+                    import subprocess
+                    result = subprocess.run(['nvidia-smi'], capture_output=True, text=True, timeout=10)
+                    if result.returncode == 0:
+                        self.log_message("✅ nvidia-smi works - NVIDIA driver is installed")
+                        # Extract GPU info from nvidia-smi
+                        lines = result.stdout.split('\n')
+                        for line in lines:
+                            if 'GeForce' in line or 'RTX' in line or 'GTX' in line or 'Quadro' in line:
+                                gpu_info = line.strip()
+                                self.log_message(f"   Hardware GPU found: {gpu_info}")
+                    else:
+                        self.log_message("❌ nvidia-smi failed - NVIDIA driver issue")
+                except FileNotFoundError:
+                    self.log_message("❌ nvidia-smi not found - NVIDIA driver not installed")
+                except subprocess.TimeoutExpired:
+                    self.log_message("❌ nvidia-smi timeout - driver issue")
+                except Exception as e:
+                    self.log_message(f"❌ nvidia-smi error: {str(e)}")
+                
+                # Check CUDA toolkit
+                try:
+                    result = subprocess.run(['nvcc', '--version'], capture_output=True, text=True, timeout=10)
+                    if result.returncode == 0:
+                        version_line = [line for line in result.stdout.split('\n') if 'release' in line.lower()]
+                        if version_line:
+                            self.log_message(f"✅ CUDA toolkit found: {version_line[0].strip()}")
+                        else:
+                            self.log_message("✅ CUDA toolkit found (version unclear)")
+                    else:
+                        self.log_message("❌ nvcc failed - CUDA toolkit issue")
+                except FileNotFoundError:
+                    self.log_message("❌ nvcc not found - CUDA toolkit not in PATH")
+                except Exception as e:
+                    self.log_message(f"❌ nvcc error: {str(e)}")
+                
+                # Check LD_LIBRARY_PATH
+                ld_path = os.environ.get('LD_LIBRARY_PATH', '')
+                if 'cuda' in ld_path.lower():
+                    self.log_message(f"✅ CUDA in LD_LIBRARY_PATH: {ld_path}")
+                else:
+                    self.log_message("❌ CUDA not in LD_LIBRARY_PATH")
+                    self.log_message("   This might prevent TensorFlow from finding CUDA libraries")
+                
+                # Suggest solutions
+                self.log_message("=== Possible Solutions ===")
+                self.log_message("1. Restart WSL: 'wsl --shutdown' then reopen")
+                self.log_message("2. Check if running in correct environment: 'source storm_env/bin/activate'")
+                self.log_message("3. Verify WSL can access GPU: Windows 11 with WSL 2.0+ required")
+                self.log_message("4. Update NVIDIA drivers to latest version")
+                
                 return False
                 
         except Exception as e:
-            self.log_message(f"❌ GPU check failed: {str(e)}")
+            self.log_message(f"❌ GPU check failed with error: {str(e)}")
             self.log_message("   Training will use CPU (very slow)")
             return False
     
@@ -1311,18 +1381,10 @@ class STORMApp:
             gpu_available = self.check_gpu_status()
             
             if not gpu_available:
-                # Ask user if they want to continue with CPU
-                response = messagebox.askyesno(
-                    "No GPU Detected", 
-                    "No GPU detected! Training will be very slow on CPU.\n\n"
-                    "Do you want to continue anyway?\n\n"
-                    "Click 'No' to cancel and check your CUDA installation."
-                )
-                if not response:
-                    self.log_message("Training cancelled by user due to no GPU")
-                    return
-                else:
-                    self.log_message("User chose to continue training on CPU")
+                self.log_message("⚠️  Proceeding with CPU training (will be slower)")
+                self.log_message("   Consider checking GPU setup for faster training")
+            else:
+                self.log_message("✅ GPU ready for fast training")
             
             # Check if we have pre-processed datasets from "Save Cutouts"
             if not self.training_data_ready or self.train_ds is None or self.val_ds is None:
