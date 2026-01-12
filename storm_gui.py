@@ -390,14 +390,73 @@ class STORMApp:
         # Data Selection Tab
         self.create_data_tab(notebook)
         
+        # Peak Configuration Tab (NEW)
+        self.create_peak_config_tab(notebook)
+        
         # Training Tab
         self.create_training_tab(notebook)
         
         # Prediction Tab
         self.create_prediction_tab(notebook)
+    
+    def create_peak_config_tab(self, notebook):
+        """Create peak detection configuration and visualization tab"""
+        peak_frame = ttk.Frame(notebook)
+        notebook.add(peak_frame, text="Peak Configuration")
         
-        # Configuration Tab
-        self.create_config_tab(notebook)
+        # Peak detection parameters
+        params_frame = ttk.LabelFrame(peak_frame, text="Peak Detection Parameters", padding=10)
+        params_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # Create grid of parameters
+        params = [
+            ("Distance:", "distance", self.config.distance),
+            ("Prominence Sigma:", "prominence_sigma", self.config.prominence_sigma),
+            ("Min Distance:", "min_distance", self.config.min_distance),
+            ("Support Radius:", "support_radius", self.config.support_radius),
+            ("Start Z:", "start_z", self.config.start_z),
+            ("End Z:", "end_z", self.config.end_z),
+            ("Sum Slices:", "csum_slices", self.config.csum_slices),
+        ]
+        
+        self.param_vars = {}
+        for i, (label, param, default) in enumerate(params):
+            row = i // 2
+            col = (i % 2) * 3
+            
+            ttk.Label(params_frame, text=label).grid(row=row, column=col, sticky=tk.W, padx=(0, 5), pady=5)
+            var = tk.DoubleVar(value=default) if isinstance(default, float) else tk.IntVar(value=default)
+            self.param_vars[param] = var
+            ttk.Entry(params_frame, textvariable=var, width=15).grid(row=row, column=col+1, padx=(0, 20), pady=5)
+        
+        # Visualization controls
+        viz_frame = ttk.LabelFrame(peak_frame, text="Peak Visualization", padding=10)
+        viz_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # File selection for visualization
+        file_frame = ttk.Frame(viz_frame)
+        file_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Label(file_frame, text="Select TIFF file for visualization:").pack(anchor=tk.W)
+        
+        file_select_frame = ttk.Frame(viz_frame)
+        file_select_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        self.viz_file_var = tk.StringVar()
+        ttk.Entry(file_select_frame, textvariable=self.viz_file_var, width=60).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(file_select_frame, text="Browse", command=self.browse_viz_file).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(file_select_frame, text="Use First Selected", command=self.use_first_selected_file).pack(side=tk.LEFT)
+        
+        # Visualize button
+        viz_button_frame = ttk.Frame(viz_frame)
+        viz_button_frame.pack(fill=tk.X)
+        
+        self.visualize_button = ttk.Button(viz_button_frame, text="Visualize Peaks", command=self.visualize_peaks)
+        self.visualize_button.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Status label
+        self.viz_status_label = ttk.Label(viz_button_frame, text="Select a TIFF file to visualize peak detection")
+        self.viz_status_label.pack(side=tk.LEFT)
     
     def create_data_tab(self, notebook):
         """Create data selection and preview tab"""
@@ -539,43 +598,99 @@ class STORMApp:
         self.results_text = scrolledtext.ScrolledText(results_frame, height=20, state=tk.DISABLED)
         self.results_text.pack(fill=tk.BOTH, expand=True)
     
-    def create_config_tab(self, notebook):
-        """Create configuration tab"""
-        config_frame = ttk.Frame(notebook)
-        notebook.add(config_frame, text="Configuration")
-        
-        # Peak detection parameters
-        peak_frame = ttk.LabelFrame(config_frame, text="Peak Detection Parameters", padding=10)
-        peak_frame.pack(fill=tk.X, padx=10, pady=5)
-        
-        # Create grid of parameters
-        params = [
-            ("Prominence Sigma:", "prominence_sigma", self.config.prominence_sigma),
-            ("Min Distance:", "min_distance", self.config.min_distance),
-            ("Support Radius:", "support_radius", self.config.support_radius),
-            ("Start Z:", "start_z", self.config.start_z),
-            ("End Z:", "end_z", self.config.end_z),
-            ("Sum Slices:", "csum_slices", self.config.csum_slices),
-        ]
-        
-        self.param_vars = {}
-        for i, (label, param, default) in enumerate(params):
-            row = i // 2
-            col = (i % 2) * 2
+    def browse_viz_file(self):
+        """Browse for TIFF file to visualize"""
+        try:
+            self.root.update_idletasks()
             
-            ttk.Label(peak_frame, text=label).grid(row=row, column=col, sticky=tk.W, padx=(0, 5), pady=2)
-            var = tk.DoubleVar(value=default) if isinstance(default, float) else tk.IntVar(value=default)
-            self.param_vars[param] = var
-            ttk.Entry(peak_frame, textvariable=var, width=15).grid(row=row, column=col+1, padx=(0, 20), pady=2)
-        
-        # Save/Load configuration
-        config_buttons = ttk.Frame(config_frame)
-        config_buttons.pack(fill=tk.X, padx=10, pady=10)
-        
-        ttk.Button(config_buttons, text="Save Configuration", command=self.save_config).pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Button(config_buttons, text="Load Configuration", command=self.load_config).pack(side=tk.LEFT)
-        ttk.Button(config_buttons, text="Reset to Defaults", command=self.reset_config).pack(side=tk.LEFT, padx=(10, 0))
+            # Use current data directory as initial directory
+            current_dir = self.data_dir_var.get()
+            if current_dir and os.path.exists(current_dir):
+                initial_dir = current_dir
+            else:
+                initial_dir = WindowsPathHelper.get_default_data_path()
+                if not os.path.exists(initial_dir):
+                    initial_dir = os.path.expanduser("~")
+            
+            filename = filedialog.askopenfilename(
+                title="Select TIFF file for peak visualization",
+                initialdir=initial_dir,
+                filetypes=[("TIFF files", "*.tif *.tiff"), ("All files", "*.*")],
+                parent=self.root
+            )
+            
+            if filename:
+                self.viz_file_var.set(filename)
+                self.viz_status_label.config(text=f"Selected: {Path(filename).name}")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Error selecting file: {str(e)}")
     
+    def use_first_selected_file(self):
+        """Use the first selected file from data selection tab"""
+        selected_files = self.get_selected_files()
+        if selected_files:
+            self.viz_file_var.set(str(selected_files[0]))
+            self.viz_status_label.config(text=f"Using: {selected_files[0].name}")
+        else:
+            messagebox.showwarning("Warning", "No files selected in Data Selection tab")
+    
+    def visualize_peaks(self):
+        """Visualize peak detection on selected file"""
+        viz_file = self.viz_file_var.get()
+        if not viz_file:
+            messagebox.showwarning("Warning", "Please select a TIFF file first")
+            return
+        
+        if not os.path.exists(viz_file):
+            messagebox.showerror("Error", f"File not found: {viz_file}")
+            return
+        
+        try:
+            # Update status
+            self.viz_status_label.config(text="Loading TIFF file...")
+            self.root.update()
+            
+            # Update configuration from GUI
+            self.update_config_from_gui()
+            
+            # Load TIFF stack
+            stack = tiff.imread(viz_file)
+            self.viz_status_label.config(text="Processing image...")
+            self.root.update()
+            
+            # Create summed image for peak detection
+            csum_image = crop_and_sum_stack(
+                stack, self.config.start_z, self.config.end_z, self.config.csum_slices
+            )
+            
+            self.viz_status_label.config(text="Detecting peaks...")
+            self.root.update()
+            
+            # Extract PSF cutouts with visualization
+            cutouts, group_ids, peaks = extract_psf_cutouts(
+                stack, csum_image, self.config.distance,
+                min_distance=self.config.min_distance,
+                prominence_sigma=self.config.prominence_sigma,
+                support_radius=self.config.support_radius,
+                start=self.config.start_z,
+                end=self.config.end_z,
+                plot=True  # This will show the matplotlib plot
+            )
+            
+            # Update status with results
+            self.viz_status_label.config(text=f"Found {len(peaks)} peaks, {len(cutouts)} cutouts")
+            
+            # Log results
+            self.log_message(f"Peak visualization completed for {Path(viz_file).name}")
+            self.log_message(f"Parameters: distance={self.config.distance}, prominence_sigma={self.config.prominence_sigma}")
+            self.log_message(f"Results: {len(peaks)} peaks detected, {len(cutouts)} cutouts extracted")
+            
+        except Exception as e:
+            self.viz_status_label.config(text="Error occurred")
+            messagebox.showerror("Visualization Error", f"Error visualizing peaks: {str(e)}")
+            self.log_message(f"Peak visualization error: {str(e)}")
+
     def go_to_desktop(self):
         """Navigate to Windows Desktop"""
         desktop_path = WindowsPathHelper.get_desktop_path()
@@ -908,89 +1023,6 @@ class STORMApp:
             
         except Exception as e:
             messagebox.showerror("Error", f"Prediction error: {str(e)}")
-    
-    def save_config(self):
-        """Save configuration to file"""
-        try:
-            self.root.update_idletasks()
-            
-            initial_dir = WindowsPathHelper.get_documents_path()
-            
-            filename = filedialog.asksaveasfilename(
-                title="Save Configuration",
-                initialdir=initial_dir,
-                defaultextension=".json",
-                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-                parent=self.root
-            )
-            
-            if filename:
-                config_dict = {
-                    'distance': self.distance_var.get(),
-                    'epochs': self.epochs_var.get(),
-                    'batch_size': self.batch_size_var.get(),
-                }
-                
-                for param, var in self.param_vars.items():
-                    config_dict[param] = var.get()
-                
-                with open(filename, 'w') as f:
-                    json.dump(config_dict, f, indent=2)
-                
-                messagebox.showinfo("Success", f"Configuration saved to {filename}")
-        except Exception as e:
-            messagebox.showerror("Error", f"Error saving configuration: {str(e)}")
-    
-    def load_config(self):
-        """Load configuration from file"""
-        try:
-            self.root.update_idletasks()
-            
-            initial_dir = WindowsPathHelper.get_documents_path()
-            
-            filename = filedialog.askopenfilename(
-                title="Load Configuration",
-                initialdir=initial_dir,
-                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-                parent=self.root
-            )
-            
-            if filename:
-                with open(filename, 'r') as f:
-                    config_dict = json.load(f)
-                
-                # Update GUI variables
-                if 'distance' in config_dict:
-                    self.distance_var.set(config_dict['distance'])
-                if 'epochs' in config_dict:
-                    self.epochs_var.set(config_dict['epochs'])
-                if 'batch_size' in config_dict:
-                    self.batch_size_var.set(config_dict['batch_size'])
-                
-                for param, var in self.param_vars.items():
-                    if param in config_dict:
-                        var.set(config_dict[param])
-                
-                messagebox.showinfo("Success", f"Configuration loaded from {filename}")
-        except Exception as e:
-            messagebox.showerror("Error", f"Error loading configuration: {str(e)}")
-    
-    def reset_config(self):
-        """Reset configuration to defaults"""
-        default_config = STORMConfig()
-        
-        self.distance_var.set(default_config.distance)
-        self.epochs_var.set(default_config.epochs)
-        self.batch_size_var.set(default_config.batch_size)
-        
-        self.param_vars['prominence_sigma'].set(default_config.prominence_sigma)
-        self.param_vars['min_distance'].set(default_config.min_distance)
-        self.param_vars['support_radius'].set(default_config.support_radius)
-        self.param_vars['start_z'].set(default_config.start_z)
-        self.param_vars['end_z'].set(default_config.end_z)
-        self.param_vars['csum_slices'].set(default_config.csum_slices)
-        
-        messagebox.showinfo("Success", "Configuration reset to defaults")
     
     def process_queue(self):
         """Process messages from worker threads"""
