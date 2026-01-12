@@ -346,7 +346,7 @@ class STORMApp:
     def __init__(self, root):
         self.root = root
         self.root.title("STORM Microscopy Analysis - Height Regression")
-        self.root.geometry("3600x2400")
+        self.root.geometry("1200x800")
         
         # Configuration
         self.config = STORMConfig()
