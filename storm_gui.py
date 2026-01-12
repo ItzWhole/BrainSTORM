@@ -364,6 +364,7 @@ class STORMApp:
         self.train_ds = None
         self.val_ds = None
         self.training_data_ready = False
+        self.training_stop_requested = False
         
         # Setup logging
         self.setup_logging()
@@ -1228,6 +1229,9 @@ class STORMApp:
     def train_model_thread(self, selected_files):
         """Multi-stage training thread function"""
         try:
+            # Reset stop flag
+            self.training_stop_requested = False
+            
             # Check if we have pre-processed datasets from "Save Cutouts"
             if not self.training_data_ready or self.train_ds is None or self.val_ds is None:
                 self.queue.put(('error', 'No cutouts saved! Please go to Peak Configuration and click "Save Cutouts" first.'))
@@ -1245,6 +1249,11 @@ class STORMApp:
             
             # Process each training block
             for block_idx, block in enumerate(self.training_blocks):
+                # Check if stop was requested
+                if self.training_stop_requested:
+                    self.log_message("Training stopped by user before completing all blocks")
+                    break
+                    
                 block_num = block_idx + 1
                 self.log_message(f"=== Training Block {block_num}/{total_blocks} ===")
                 
@@ -1309,9 +1318,9 @@ class STORMApp:
                         )
                     )
                 
-                # Custom callback for progress updates
+                # Custom callback for progress updates and verbose logging
                 class ProgressCallback(tf.keras.callbacks.Callback):
-                    def __init__(self, progress_func, log_func, block_num, total_blocks, initial_epoch, total_epochs):
+                    def __init__(self, progress_func, log_func, block_num, total_blocks, initial_epoch, total_epochs, stop_flag_func):
                         super().__init__()
                         self.progress_func = progress_func
                         self.log_func = log_func
@@ -1319,8 +1328,25 @@ class STORMApp:
                         self.total_blocks = total_blocks
                         self.initial_epoch = initial_epoch
                         self.total_epochs = total_epochs
+                        self.stop_flag_func = stop_flag_func
+                    
+                    def on_epoch_begin(self, epoch, logs=None):
+                        # Check if stop was requested
+                        if self.stop_flag_func():
+                            self.log_func("Training stopped by user request")
+                            self.model.stop_training = True
+                            return
+                        
+                        current_epoch = self.initial_epoch + epoch + 1
+                        self.log_func(f"Epoch {current_epoch}/{self.total_epochs}")
                     
                     def on_epoch_end(self, epoch, logs=None):
+                        # Check if stop was requested
+                        if self.stop_flag_func():
+                            self.log_func("Training stopped by user request")
+                            self.model.stop_training = True
+                            return
+                            
                         current_epoch = self.initial_epoch + epoch + 1
                         
                         # Calculate progress: 10% setup + 80% training + 10% final
@@ -1333,13 +1359,27 @@ class STORMApp:
                                              f"Block {self.block_num}/{self.total_blocks} - Epoch {current_epoch}")
                         
                         if self.log_func and logs:
-                            self.log_func(f"Epoch {current_epoch}: loss={logs.get('loss', 0):.4f}, "
-                                        f"val_loss={logs.get('val_loss', 0):.4f}, "
-                                        f"mae={logs.get('mae', 0):.4f}")
+                            # Format like Keras verbose output
+                            loss_str = f"loss: {logs.get('loss', 0):.4f}"
+                            val_loss_str = f"val_loss: {logs.get('val_loss', 0):.4f}"
+                            mae_str = f"mae: {logs.get('mae', 0):.4f}"
+                            val_mae_str = f"val_mae: {logs.get('val_mae', 0):.4f}"
+                            
+                            self.log_func(f"Epoch {current_epoch}/{self.total_epochs} - {loss_str} - {val_loss_str} - {mae_str} - {val_mae_str}")
+                    
+                    def on_train_begin(self, logs=None):
+                        self.log_func(f"Starting training for Block {self.block_num}...")
+                    
+                    def on_train_end(self, logs=None):
+                        if self.stop_flag_func():
+                            self.log_func(f"Block {self.block_num} training stopped by user")
+                        else:
+                            self.log_func(f"Block {self.block_num} training completed")
                 
                 callbacks.append(ProgressCallback(
                     self.update_progress, self.log_message, 
-                    block_num, total_blocks, initial_epoch, epochs
+                    block_num, total_blocks, initial_epoch, epochs,
+                    lambda: self.training_stop_requested
                 ))
                 
                 # Train model for this block
@@ -1366,14 +1406,28 @@ class STORMApp:
                     model = tf.keras.models.load_model(str(model_path))
             
             # Final model loading and completion
-            self.update_progress(90, "Loading final model...")
-            self.model = tf.keras.models.load_model(str(model_path))
-            
-            self.update_progress(100, "Multi-stage training completed!")
-            self.log_message(f"All {total_blocks} training blocks completed!")
-            self.log_message(f"Final model saved to: {model_path}")
-            
-            self.queue.put(('training_complete', f'Multi-stage training completed! ({total_blocks} blocks)'))
+            if not self.training_stop_requested:
+                self.update_progress(90, "Loading final model...")
+                self.model = tf.keras.models.load_model(str(model_path))
+                
+                self.update_progress(100, "Multi-stage training completed!")
+                self.log_message(f"All {total_blocks} training blocks completed!")
+                self.log_message(f"Final model saved to: {model_path}")
+                
+                self.queue.put(('training_complete', f'Multi-stage training completed! ({total_blocks} blocks)'))
+            else:
+                # Training was stopped
+                self.update_progress(100, "Training stopped by user")
+                self.log_message("Training stopped by user request")
+                
+                # Try to load the best model so far
+                try:
+                    self.model = tf.keras.models.load_model(str(model_path))
+                    self.log_message(f"Loaded best model so far from: {model_path}")
+                except:
+                    self.log_message("No model checkpoint available")
+                
+                self.queue.put(('training_complete', 'Training stopped by user'))
             
         except Exception as e:
             self.queue.put(('error', f"Training error: {str(e)}"))
@@ -1381,8 +1435,11 @@ class STORMApp:
             self.queue.put(('training_finished', None))
     
     def stop_training(self):
-        """Stop training (placeholder - would need more complex implementation)"""
-        messagebox.showinfo("Info", "Training stop requested (implementation needed)")
+        """Stop training by setting a flag that will be checked by the training thread"""
+        self.training_stop_requested = True
+        self.log_message("Training stop requested by user...")
+        self.stop_button.config(state=tk.DISABLED)
+        messagebox.showinfo("Stop Requested", "Training will stop after the current epoch completes.")
     
     def update_progress(self, value, message):
         """Update progress bar and message"""
