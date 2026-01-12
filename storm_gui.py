@@ -543,29 +543,48 @@ class STORMApp:
         ttk.Button(button_frame, text="Preview Selected", command=self.preview_files).pack(side=tk.LEFT, padx=5)
     
     def create_training_tab(self, notebook):
-        """Create training configuration and control tab"""
+        """Create training configuration and control tab with multi-stage training"""
         train_frame = ttk.Frame(notebook)
         notebook.add(train_frame, text="Training")
         
+        # Create scrollable frame for training blocks
+        canvas = tk.Canvas(train_frame)
+        scrollbar = ttk.Scrollbar(train_frame, orient="vertical", command=canvas.yview)
+        self.scrollable_frame = ttk.Frame(canvas)
+        
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # No cutouts alert
+        self.no_cutouts_alert = ttk.Label(self.scrollable_frame, 
+                                         text="⚠️ NO CUTOUTS SAVED! Please go to Peak Configuration and click 'Save Cutouts' first.",
+                                         foreground="red", font=("TkDefaultFont", 10, "bold"))
+        self.no_cutouts_alert.pack(fill=tk.X, padx=10, pady=10)
+        
+        # Training blocks container
+        self.training_blocks_frame = ttk.Frame(self.scrollable_frame)
+        self.training_blocks_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # Initialize training blocks list
+        self.training_blocks = []
+        
+        # Create default training block
+        self.create_default_training_block()
+        
+        # Add block button
+        add_block_frame = ttk.Frame(self.scrollable_frame)
+        add_block_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        ttk.Button(add_block_frame, text="➕ Add Training Block", command=self.add_training_block).pack(side=tk.LEFT)
+        
         # Training controls
-        control_frame = ttk.LabelFrame(train_frame, text="Training Controls", padding=10)
+        control_frame = ttk.LabelFrame(self.scrollable_frame, text="Training Controls", padding=10)
         control_frame.pack(fill=tk.X, padx=10, pady=5)
-        
-        # Training parameters
-        params_frame = ttk.Frame(control_frame)
-        params_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        ttk.Label(params_frame, text="Epochs:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
-        self.epochs_var = tk.IntVar(value=self.config.epochs)
-        ttk.Entry(params_frame, textvariable=self.epochs_var, width=10).grid(row=0, column=1, padx=(0, 20))
-        
-        ttk.Label(params_frame, text="Batch Size:").grid(row=0, column=2, sticky=tk.W, padx=(0, 5))
-        self.batch_size_var = tk.IntVar(value=self.config.batch_size)
-        ttk.Entry(params_frame, textvariable=self.batch_size_var, width=10).grid(row=0, column=3, padx=(0, 20))
-        
-        ttk.Label(params_frame, text="Cutout size:").grid(row=0, column=4, sticky=tk.W, padx=(0, 5))
-        self.distance_var = tk.IntVar(value=self.config.distance)
-        ttk.Entry(params_frame, textvariable=self.distance_var, width=10).grid(row=0, column=5)
         
         # Training buttons
         button_frame = ttk.Frame(control_frame)
@@ -577,11 +596,8 @@ class STORMApp:
         self.stop_button = ttk.Button(button_frame, text="Stop Training", command=self.stop_training, state=tk.DISABLED)
         self.stop_button.pack(side=tk.LEFT, padx=(0, 10))
         
-        ttk.Button(button_frame, text="Save Model", command=self.save_model).pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Button(button_frame, text="Load Model", command=self.load_model).pack(side=tk.LEFT)
-        
         # Progress bar
-        progress_frame = ttk.LabelFrame(train_frame, text="Training Progress", padding=10)
+        progress_frame = ttk.LabelFrame(self.scrollable_frame, text="Training Progress", padding=10)
         progress_frame.pack(fill=tk.X, padx=10, pady=5)
         
         self.progress_var = tk.DoubleVar()
@@ -591,12 +607,157 @@ class STORMApp:
         self.progress_label = ttk.Label(progress_frame, text="Ready to train")
         self.progress_label.pack()
         
+        # Save model button (moved to end)
+        save_frame = ttk.Frame(self.scrollable_frame)
+        save_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        ttk.Button(save_frame, text="Save Model", command=self.save_model).pack(side=tk.LEFT)
+        
         # Log
-        log_frame = ttk.LabelFrame(train_frame, text="Log", padding=10)
+        log_frame = ttk.LabelFrame(self.scrollable_frame, text="Log", padding=10)
         log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
         self.log_text = scrolledtext.ScrolledText(log_frame, height=15, state=tk.DISABLED)
         self.log_text.pack(fill=tk.BOTH, expand=True)
+        
+        # Pack canvas and scrollbar
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+    
+    def create_default_training_block(self):
+        """Create the default (first) training block"""
+        block_frame = ttk.LabelFrame(self.training_blocks_frame, text="Training Block 1 (Default)", padding=10)
+        block_frame.pack(fill=tk.X, pady=5)
+        
+        # Parameters grid
+        params_frame = ttk.Frame(block_frame)
+        params_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # Row 1: Epochs, Adam LR, Huber Delta
+        ttk.Label(params_frame, text="Epochs:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
+        epochs_var = tk.IntVar(value=100)
+        ttk.Entry(params_frame, textvariable=epochs_var, width=10).grid(row=0, column=1, padx=(0, 20))
+        
+        ttk.Label(params_frame, text="Adam LR:").grid(row=0, column=2, sticky=tk.W, padx=(0, 5))
+        adam_lr_var = tk.DoubleVar(value=1e-3)
+        ttk.Entry(params_frame, textvariable=adam_lr_var, width=10).grid(row=0, column=3, padx=(0, 20))
+        
+        ttk.Label(params_frame, text="Huber Delta:").grid(row=0, column=4, sticky=tk.W, padx=(0, 5))
+        huber_delta_var = tk.DoubleVar(value=0.06)
+        ttk.Entry(params_frame, textvariable=huber_delta_var, width=10).grid(row=0, column=5)
+        
+        # Row 2: LR Patience, Early Stopping
+        ttk.Label(params_frame, text="LR Patience:").grid(row=1, column=0, sticky=tk.W, padx=(0, 5), pady=(5, 0))
+        lr_patience_var = tk.IntVar(value=25)
+        ttk.Entry(params_frame, textvariable=lr_patience_var, width=10).grid(row=1, column=1, padx=(0, 20), pady=(5, 0))
+        
+        # Early stopping with enable checkbox
+        early_stop_enabled_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(params_frame, text="Early Stopping:", variable=early_stop_enabled_var).grid(row=1, column=2, sticky=tk.W, padx=(0, 5), pady=(5, 0))
+        early_stop_patience_var = tk.IntVar(value=55)
+        early_stop_entry = ttk.Entry(params_frame, textvariable=early_stop_patience_var, width=10, state=tk.DISABLED)
+        early_stop_entry.grid(row=1, column=3, padx=(0, 20), pady=(5, 0))
+        
+        # Enable/disable early stopping entry based on checkbox
+        def toggle_early_stop():
+            early_stop_entry.config(state=tk.NORMAL if early_stop_enabled_var.get() else tk.DISABLED)
+        early_stop_enabled_var.trace('w', lambda *args: toggle_early_stop())
+        
+        # Store block data
+        block_data = {
+            'frame': block_frame,
+            'block_id': 1,
+            'is_default': True,
+            'epochs_var': epochs_var,
+            'adam_lr_var': adam_lr_var,
+            'huber_delta_var': huber_delta_var,
+            'lr_patience_var': lr_patience_var,
+            'early_stop_enabled_var': early_stop_enabled_var,
+            'early_stop_patience_var': early_stop_patience_var
+        }
+        
+        self.training_blocks.append(block_data)
+    
+    def add_training_block(self):
+        """Add a new training block"""
+        block_id = len(self.training_blocks) + 1
+        
+        block_frame = ttk.LabelFrame(self.training_blocks_frame, text=f"Training Block {block_id}", padding=10)
+        block_frame.pack(fill=tk.X, pady=5)
+        
+        # Remove button (X)
+        remove_frame = ttk.Frame(block_frame)
+        remove_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        remove_button = ttk.Button(remove_frame, text="❌ Remove Block", 
+                                  command=lambda: self.remove_training_block(block_id))
+        remove_button.pack(side=tk.RIGHT)
+        
+        # Parameters grid
+        params_frame = ttk.Frame(block_frame)
+        params_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # Row 1: Adam LR, Huber Delta
+        ttk.Label(params_frame, text="Adam LR:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
+        adam_lr_var = tk.DoubleVar(value=2e-4)
+        ttk.Entry(params_frame, textvariable=adam_lr_var, width=10).grid(row=0, column=1, padx=(0, 20))
+        
+        ttk.Label(params_frame, text="Huber Delta:").grid(row=0, column=2, sticky=tk.W, padx=(0, 5))
+        huber_delta_var = tk.DoubleVar(value=0.02)
+        ttk.Entry(params_frame, textvariable=huber_delta_var, width=10).grid(row=0, column=3)
+        
+        # Row 2: LR Patience, Early Stopping
+        ttk.Label(params_frame, text="LR Patience:").grid(row=1, column=0, sticky=tk.W, padx=(0, 5), pady=(5, 0))
+        lr_patience_var = tk.IntVar(value=20)
+        ttk.Entry(params_frame, textvariable=lr_patience_var, width=10).grid(row=1, column=1, padx=(0, 20), pady=(5, 0))
+        
+        # Early stopping with enable checkbox
+        early_stop_enabled_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(params_frame, text="Early Stopping:", variable=early_stop_enabled_var).grid(row=1, column=2, sticky=tk.W, padx=(0, 5), pady=(5, 0))
+        early_stop_patience_var = tk.IntVar(value=40)
+        early_stop_entry = ttk.Entry(params_frame, textvariable=early_stop_patience_var, width=10)
+        early_stop_entry.grid(row=1, column=3, pady=(5, 0))
+        
+        # Enable/disable early stopping entry based on checkbox
+        def toggle_early_stop():
+            early_stop_entry.config(state=tk.NORMAL if early_stop_enabled_var.get() else tk.DISABLED)
+        early_stop_enabled_var.trace('w', lambda *args: toggle_early_stop())
+        
+        # Store block data
+        block_data = {
+            'frame': block_frame,
+            'block_id': block_id,
+            'is_default': False,
+            'adam_lr_var': adam_lr_var,
+            'huber_delta_var': huber_delta_var,
+            'lr_patience_var': lr_patience_var,
+            'early_stop_enabled_var': early_stop_enabled_var,
+            'early_stop_patience_var': early_stop_patience_var
+        }
+        
+        self.training_blocks.append(block_data)
+        
+        # Update canvas scroll region
+        self.scrollable_frame.update_idletasks()
+    
+    def remove_training_block(self, block_id):
+        """Remove a training block"""
+        # Find and remove the block
+        for i, block in enumerate(self.training_blocks):
+            if block['block_id'] == block_id and not block['is_default']:
+                block['frame'].destroy()
+                self.training_blocks.pop(i)
+                break
+        
+        # Update canvas scroll region
+        self.scrollable_frame.update_idletasks()
+    
+    def update_cutouts_alert(self):
+        """Update the visibility of the no cutouts alert"""
+        if self.training_data_ready:
+            self.no_cutouts_alert.pack_forget()
+        else:
+            self.no_cutouts_alert.pack(fill=tk.X, padx=10, pady=10, before=self.training_blocks_frame)
     
     def create_prediction_tab(self, notebook):
         """Create prediction and evaluation tab"""
@@ -807,6 +968,9 @@ class STORMApp:
             self.train_ds = train_ds
             self.val_ds = val_ds
             self.training_data_ready = True
+            
+            # Update the cutouts alert visibility
+            self.update_cutouts_alert()
             
             # Update status with success
             self.viz_status_label.config(text=f"Datasets ready! Train: {len(X_tr)}, Val: {len(X_va)}")
@@ -1062,77 +1226,154 @@ class STORMApp:
         self.training_thread.start()
     
     def train_model_thread(self, selected_files):
-        """Training thread function"""
+        """Multi-stage training thread function"""
         try:
             # Check if we have pre-processed datasets from "Save Cutouts"
-            if self.training_data_ready and self.train_ds is not None and self.val_ds is not None:
-                self.log_message("Using pre-processed datasets from 'Save Cutouts'")
+            if not self.training_data_ready or self.train_ds is None or self.val_ds is None:
+                self.queue.put(('error', 'No cutouts saved! Please go to Peak Configuration and click "Save Cutouts" first.'))
+                return
+            
+            self.log_message("Starting multi-stage training with pre-processed datasets")
+            
+            # Build initial model
+            self.update_progress(10, "Building neural network...")
+            input_shape = (self.config.distance + 1, self.config.distance + 1, 1)
+            model = build_astigmatic_psf_network(input_shape)
+            
+            total_blocks = len(self.training_blocks)
+            current_epoch = 0
+            
+            # Process each training block
+            for block_idx, block in enumerate(self.training_blocks):
+                block_num = block_idx + 1
+                self.log_message(f"=== Training Block {block_num}/{total_blocks} ===")
                 
-                # Build model directly
-                self.update_progress(60, "Building neural network...")
-                input_shape = (self.config.distance + 1, self.config.distance + 1, 1)
-                model = build_astigmatic_psf_network(input_shape)
+                # Get parameters from block
+                if block['is_default']:
+                    epochs = block['epochs_var'].get()
+                    initial_epoch = current_epoch
+                else:
+                    # For fine-tuning blocks, use a default of 300 epochs
+                    epochs = 300
+                    initial_epoch = current_epoch
+                
+                adam_lr = block['adam_lr_var'].get()
+                huber_delta = block['huber_delta_var'].get()
+                lr_patience = block['lr_patience_var'].get()
+                early_stop_enabled = block['early_stop_enabled_var'].get()
+                early_stop_patience = block['early_stop_patience_var'].get() if early_stop_enabled else None
+                
+                self.log_message(f"Block {block_num} parameters:")
+                self.log_message(f"  Epochs: {initial_epoch} → {epochs}")
+                self.log_message(f"  Adam LR: {adam_lr}")
+                self.log_message(f"  Huber Delta: {huber_delta}")
+                self.log_message(f"  LR Patience: {lr_patience}")
+                if early_stop_enabled:
+                    self.log_message(f"  Early Stopping Patience: {early_stop_patience}")
+                else:
+                    self.log_message("  Early Stopping: Disabled")
+                
+                # Compile model with block-specific parameters
+                model.compile(
+                    optimizer=tf.keras.optimizers.Adam(adam_lr),
+                    loss=tf.keras.losses.Huber(delta=huber_delta),
+                    metrics=[tf.keras.metrics.MeanAbsoluteError(name='mae')]
+                )
                 
                 # Setup callbacks
-                self.update_progress(70, "Starting model training...")
                 self.config.output_path.mkdir(parents=True, exist_ok=True)
                 model_path = self.config.output_path / f"model_distance_{self.config.distance}.keras"
-                callbacks = setup_callbacks(str(model_path))
+                
+                callbacks = [
+                    tf.keras.callbacks.ModelCheckpoint(
+                        str(model_path), 
+                        monitor='val_mae', 
+                        save_best_only=True, 
+                        mode='min'
+                    ),
+                    tf.keras.callbacks.ReduceLROnPlateau(
+                        monitor='val_mae', 
+                        factor=0.5, 
+                        patience=lr_patience, 
+                        min_lr=1e-6
+                    )
+                ]
+                
+                # Add early stopping if enabled
+                if early_stop_enabled:
+                    callbacks.append(
+                        tf.keras.callbacks.EarlyStopping(
+                            monitor='val_mae', 
+                            patience=early_stop_patience, 
+                            restore_best_weights=True
+                        )
+                    )
                 
                 # Custom callback for progress updates
                 class ProgressCallback(tf.keras.callbacks.Callback):
-                    def __init__(self, progress_func, log_func, total_epochs):
+                    def __init__(self, progress_func, log_func, block_num, total_blocks, initial_epoch, total_epochs):
                         super().__init__()
                         self.progress_func = progress_func
                         self.log_func = log_func
+                        self.block_num = block_num
+                        self.total_blocks = total_blocks
+                        self.initial_epoch = initial_epoch
                         self.total_epochs = total_epochs
                     
                     def on_epoch_end(self, epoch, logs=None):
+                        current_epoch = self.initial_epoch + epoch + 1
+                        
+                        # Calculate progress: 10% setup + 80% training + 10% final
+                        block_progress = (self.block_num - 1) / self.total_blocks
+                        epoch_progress = (epoch + 1) / (self.total_epochs - self.initial_epoch)
+                        total_progress = 10 + 80 * (block_progress + epoch_progress / self.total_blocks)
+                        
                         if self.progress_func:
-                            progress = 70 + (epoch + 1) / self.total_epochs * 30  # Last 30% for training
-                            self.progress_func(progress, f"Epoch {epoch + 1}/{self.total_epochs}")
+                            self.progress_func(total_progress, 
+                                             f"Block {self.block_num}/{self.total_blocks} - Epoch {current_epoch}")
                         
                         if self.log_func and logs:
-                            self.log_func(f"Epoch {epoch + 1}: loss={logs.get('loss', 0):.4f}, "
+                            self.log_func(f"Epoch {current_epoch}: loss={logs.get('loss', 0):.4f}, "
                                         f"val_loss={logs.get('val_loss', 0):.4f}, "
                                         f"mae={logs.get('mae', 0):.4f}")
                 
-                callbacks.append(ProgressCallback(self.update_progress, self.log_message, self.config.epochs))
+                callbacks.append(ProgressCallback(
+                    self.update_progress, self.log_message, 
+                    block_num, total_blocks, initial_epoch, epochs
+                ))
                 
-                # Train model using pre-processed datasets
-                self.log_message("Starting model training with pre-processed datasets...")
+                # Train model for this block
+                progress_start = 10 + 80 * (block_idx / total_blocks)
+                self.update_progress(progress_start, f"Training Block {block_num}/{total_blocks}...")
                 
                 history = model.fit(
                     self.train_ds,
                     validation_data=self.val_ds,
-                    epochs=self.config.epochs,
+                    epochs=epochs,
+                    initial_epoch=initial_epoch,
                     callbacks=callbacks,
                     verbose=0  # Suppress default output
                 )
                 
-                self.model = model
-                self.log_message(f"Training completed. Model saved to: {model_path}")
+                # Update current epoch for next block
+                current_epoch = epochs
                 
-            else:
-                # Fallback to original method if no pre-processed data
-                self.log_message("No pre-processed datasets found. Processing data from scratch...")
+                self.log_message(f"Block {block_num} completed!")
                 
-                trainer = STORMTrainerGUI(
-                    self.config,
-                    progress_callback=self.update_progress,
-                    log_callback=self.log_message
-                )
-                
-                # Load data
-                X, y, group_ids = trainer.load_training_data(selected_files)
-                
-                # Train model
-                model, history = trainer.train_model(X, y, group_ids)
-                
-                self.model = model
+                # Load best model for next block (if not the last block)
+                if block_idx < total_blocks - 1:
+                    self.log_message("Loading best model for next training block...")
+                    model = tf.keras.models.load_model(str(model_path))
             
-            self.update_progress(100, "Training completed!")
-            self.queue.put(('training_complete', 'Training completed successfully!'))
+            # Final model loading and completion
+            self.update_progress(90, "Loading final model...")
+            self.model = tf.keras.models.load_model(str(model_path))
+            
+            self.update_progress(100, "Multi-stage training completed!")
+            self.log_message(f"All {total_blocks} training blocks completed!")
+            self.log_message(f"Final model saved to: {model_path}")
+            
+            self.queue.put(('training_complete', f'Multi-stage training completed! ({total_blocks} blocks)'))
             
         except Exception as e:
             self.queue.put(('error', f"Training error: {str(e)}"))
@@ -1152,11 +1393,8 @@ class STORMApp:
         self.queue.put(('log', message))
     
     def update_config_from_gui(self):
-        """Update configuration from GUI values"""
-        self.config.epochs = self.epochs_var.get()
-        self.config.batch_size = self.batch_size_var.get()
-        self.config.distance = self.distance_var.get()
-        
+        """Update configuration from GUI values (for peak configuration parameters)"""
+        # Only update the peak detection parameters from the Peak Configuration tab
         for param, var in self.param_vars.items():
             setattr(self.config, param, var.get())
     
