@@ -360,6 +360,11 @@ class STORMApp:
         self.selected_files = []
         self.model = None
         
+        # Training datasets (created by save_cutouts)
+        self.train_ds = None
+        self.val_ds = None
+        self.training_data_ready = False
+        
         # Setup logging
         self.setup_logging()
         
@@ -453,6 +458,9 @@ class STORMApp:
         
         self.visualize_button = ttk.Button(viz_button_frame, text="Visualize Peaks", command=self.visualize_peaks)
         self.visualize_button.pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.save_cutouts_button = ttk.Button(viz_button_frame, text="Save Cutouts", command=self.save_cutouts)
+        self.save_cutouts_button.pack(side=tk.LEFT, padx=(0, 10))
         
         # Status label
         self.viz_status_label = ttk.Label(viz_button_frame, text="Select a TIFF file to visualize peak detection")
@@ -705,6 +713,122 @@ class STORMApp:
             messagebox.showerror("Visualization Error", f"Error visualizing peaks: {str(e)}")
             self.log_message(f"Peak visualization error: {str(e)}")
 
+    def save_cutouts(self):
+        """Process cutouts and create training datasets"""
+        viz_file = self.viz_file_var.get()
+        if not viz_file:
+            messagebox.showwarning("Warning", "Please select a TIFF file first")
+            return
+        
+        if not os.path.exists(viz_file):
+            messagebox.showerror("Error", f"File not found: {viz_file}")
+            return
+        
+        try:
+            # Update status
+            self.viz_status_label.config(text="Processing cutouts...")
+            self.root.update()
+            
+            # Update configuration from GUI
+            self.update_config_from_gui()
+            
+            # Load TIFF stack
+            stack = tiff.imread(viz_file)
+            self.log_message(f"Loading TIFF stack: {Path(viz_file).name}")
+            
+            # Create summed image for peak detection
+            csum_image = crop_and_sum_stack(
+                stack, self.config.start_z, self.config.end_z, self.config.csum_slices
+            )
+            
+            self.viz_status_label.config(text="Extracting PSF cutouts...")
+            self.root.update()
+            
+            # Extract PSF cutouts (without visualization this time)
+            cutouts, group_ids, peaks = extract_psf_cutouts(
+                stack, csum_image, self.config.distance,
+                min_distance=self.config.min_distance,
+                prominence_sigma=self.config.prominence_sigma,
+                support_radius=self.config.support_radius,
+                start=self.config.start_z,
+                end=self.config.end_z,
+                plot=False  # No visualization for data processing
+            )
+            
+            self.log_message(f"Extracted {len(cutouts)} cutouts from {len(peaks)} peaks")
+            
+            # Process cutouts following the pipeline
+            self.viz_status_label.config(text="Normalizing data...")
+            self.root.update()
+            
+            # Extract PSFs and heights
+            psfs = np.expand_dims(np.array([cutouts[i][0] for i in range(len(cutouts))]), axis=-1)
+            heights = np.array([cutouts[i][1] for i in range(len(cutouts))])
+            group_ids = np.array(group_ids)
+            
+            self.log_message(f"Height range: {np.min(heights):.1f} to {np.max(heights):.1f}")
+            
+            # Normalize PSFs (per-image normalization)
+            psfs = normalize_0_to_1(psfs)
+            
+            # Normalize heights to [0, 1]
+            heights = (heights - np.min(heights)) / (np.max(heights) - np.min(heights))
+            
+            self.log_message(f"Normalized heights range: {np.min(heights):.3f} to {np.max(heights):.3f}")
+            
+            # Split into training and validation sets
+            self.viz_status_label.config(text="Creating train/validation split...")
+            self.root.update()
+            
+            (X_tr, y_tr), (X_va, y_va) = train_val_split_by_group(
+                psfs, heights, group_ids, val_size=self.config.val_split
+            )
+            
+            self.log_message(f"Training set: {len(X_tr)} samples")
+            self.log_message(f"Validation set: {len(X_va)} samples")
+            
+            # Build augmenter
+            augmenter = build_augmenter(self.config.distance)
+            
+            # Create datasets
+            self.viz_status_label.config(text="Creating TensorFlow datasets...")
+            self.root.update()
+            
+            train_ds = make_dataset(X_tr, y_tr, 
+                                  batch_size=self.config.batch_size, 
+                                  training=True, 
+                                  augmenter=augmenter)
+            
+            val_ds = make_dataset(X_va, y_va, 
+                                batch_size=self.config.batch_size, 
+                                training=False)
+            
+            # Store datasets in memory for training
+            self.train_ds = train_ds
+            self.val_ds = val_ds
+            self.training_data_ready = True
+            
+            # Update status with success
+            self.viz_status_label.config(text=f"Datasets ready! Train: {len(X_tr)}, Val: {len(X_va)}")
+            
+            # Log success
+            self.log_message("Cutouts processed and datasets created successfully!")
+            self.log_message(f"Training dataset: {len(X_tr)} samples with augmentation")
+            self.log_message(f"Validation dataset: {len(X_va)} samples")
+            self.log_message("Ready for training!")
+            
+            # Show success message
+            messagebox.showinfo("Success", 
+                              f"Cutouts processed successfully!\n\n"
+                              f"Training samples: {len(X_tr)}\n"
+                              f"Validation samples: {len(X_va)}\n\n"
+                              f"Datasets are ready for training.")
+            
+        except Exception as e:
+            self.viz_status_label.config(text="Error processing cutouts")
+            messagebox.showerror("Processing Error", f"Error processing cutouts: {str(e)}")
+            self.log_message(f"Cutout processing error: {str(e)}")
+
     def go_to_desktop(self):
         """Navigate to Windows Desktop"""
         desktop_path = WindowsPathHelper.get_desktop_path()
@@ -940,19 +1064,74 @@ class STORMApp:
     def train_model_thread(self, selected_files):
         """Training thread function"""
         try:
-            trainer = STORMTrainerGUI(
-                self.config,
-                progress_callback=self.update_progress,
-                log_callback=self.log_message
-            )
+            # Check if we have pre-processed datasets from "Save Cutouts"
+            if self.training_data_ready and self.train_ds is not None and self.val_ds is not None:
+                self.log_message("Using pre-processed datasets from 'Save Cutouts'")
+                
+                # Build model directly
+                self.update_progress(60, "Building neural network...")
+                input_shape = (self.config.distance + 1, self.config.distance + 1, 1)
+                model = build_astigmatic_psf_network(input_shape)
+                
+                # Setup callbacks
+                self.update_progress(70, "Starting model training...")
+                self.config.output_path.mkdir(parents=True, exist_ok=True)
+                model_path = self.config.output_path / f"model_distance_{self.config.distance}.keras"
+                callbacks = setup_callbacks(str(model_path))
+                
+                # Custom callback for progress updates
+                class ProgressCallback(tf.keras.callbacks.Callback):
+                    def __init__(self, progress_func, log_func, total_epochs):
+                        super().__init__()
+                        self.progress_func = progress_func
+                        self.log_func = log_func
+                        self.total_epochs = total_epochs
+                    
+                    def on_epoch_end(self, epoch, logs=None):
+                        if self.progress_func:
+                            progress = 70 + (epoch + 1) / self.total_epochs * 30  # Last 30% for training
+                            self.progress_func(progress, f"Epoch {epoch + 1}/{self.total_epochs}")
+                        
+                        if self.log_func and logs:
+                            self.log_func(f"Epoch {epoch + 1}: loss={logs.get('loss', 0):.4f}, "
+                                        f"val_loss={logs.get('val_loss', 0):.4f}, "
+                                        f"mae={logs.get('mae', 0):.4f}")
+                
+                callbacks.append(ProgressCallback(self.update_progress, self.log_message, self.config.epochs))
+                
+                # Train model using pre-processed datasets
+                self.log_message("Starting model training with pre-processed datasets...")
+                
+                history = model.fit(
+                    self.train_ds,
+                    validation_data=self.val_ds,
+                    epochs=self.config.epochs,
+                    callbacks=callbacks,
+                    verbose=0  # Suppress default output
+                )
+                
+                self.model = model
+                self.log_message(f"Training completed. Model saved to: {model_path}")
+                
+            else:
+                # Fallback to original method if no pre-processed data
+                self.log_message("No pre-processed datasets found. Processing data from scratch...")
+                
+                trainer = STORMTrainerGUI(
+                    self.config,
+                    progress_callback=self.update_progress,
+                    log_callback=self.log_message
+                )
+                
+                # Load data
+                X, y, group_ids = trainer.load_training_data(selected_files)
+                
+                # Train model
+                model, history = trainer.train_model(X, y, group_ids)
+                
+                self.model = model
             
-            # Load data
-            X, y, group_ids = trainer.load_training_data(selected_files)
-            
-            # Train model
-            model, history = trainer.train_model(X, y, group_ids)
-            
-            self.model = model
+            self.update_progress(100, "Training completed!")
             self.queue.put(('training_complete', 'Training completed successfully!'))
             
         except Exception as e:
