@@ -445,7 +445,7 @@ class STORMApp:
         self.viz_file_var = tk.StringVar()
         ttk.Entry(file_select_frame, textvariable=self.viz_file_var, width=60).pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(file_select_frame, text="Browse", command=self.browse_viz_file).pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Button(file_select_frame, text="Use First Selected", command=self.use_first_selected_file).pack(side=tk.LEFT)
+        ttk.Button(file_select_frame, text="Use Selected File", command=self.use_first_selected_file).pack(side=tk.LEFT)
         
         # Visualize button
         viz_button_frame = ttk.Frame(viz_frame)
@@ -515,9 +515,8 @@ class STORMApp:
         button_frame = ttk.Frame(data_frame)
         button_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        ttk.Button(button_frame, text="Select All", command=self.select_all_files).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="Select File", command=self.select_file).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(button_frame, text="Clear Selection", command=self.clear_selection).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Toggle Selected", command=self.toggle_selected_files).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Preview Selected", command=self.preview_files).pack(side=tk.LEFT, padx=5)
     
     def create_training_tab(self, notebook):
@@ -627,13 +626,13 @@ class STORMApp:
             messagebox.showerror("Error", f"Error selecting file: {str(e)}")
     
     def use_first_selected_file(self):
-        """Use the first selected file from data selection tab"""
+        """Sync with the currently selected file from data selection tab"""
         selected_files = self.get_selected_files()
         if selected_files:
             self.viz_file_var.set(str(selected_files[0]))
             self.viz_status_label.config(text=f"Using: {selected_files[0].name}")
         else:
-            messagebox.showwarning("Warning", "No files selected in Data Selection tab")
+            messagebox.showwarning("Warning", "No file selected in Data Selection tab.\nPlease select a file first.")
     
     def visualize_peaks(self):
         """Visualize peak detection on selected file"""
@@ -761,18 +760,68 @@ class STORMApp:
                               "You can type the path directly in the text field and click 'Scan Files'")
     
     def toggle_file_selection(self, event):
-        """Toggle file selection on double-click"""
-        item = self.file_tree.selection()[0]
-        values = list(self.file_tree.item(item, 'values'))
-        values[3] = "Yes" if values[3] == "No" else "No"
-        self.file_tree.item(item, values=values)
-    
-    def toggle_selected_files(self):
-        """Toggle selection for currently selected items"""
-        for item in self.file_tree.selection():
+        """Select single file on double-click (single selection mode)"""
+        if not self.file_tree.selection():
+            return
+            
+        clicked_item = self.file_tree.selection()[0]
+        
+        # First clear all selections
+        for item in self.file_tree.get_children():
             values = list(self.file_tree.item(item, 'values'))
-            values[3] = "Yes" if values[3] == "No" else "No"
+            values[3] = "No"
             self.file_tree.item(item, values=values)
+        
+        # Then select only the clicked item
+        values = list(self.file_tree.item(clicked_item, 'values'))
+        values[3] = "Yes"
+        self.file_tree.item(clicked_item, values=values)
+        
+        # Update peak configuration tab with selected file
+        self.update_peak_config_file()
+    
+    def select_file(self):
+        """Select currently highlighted file (single selection)"""
+        if not self.file_tree.selection():
+            messagebox.showwarning("Warning", "Please highlight a file first")
+            return
+            
+        selected_item = self.file_tree.selection()[0]
+        
+        # Clear all selections first
+        for item in self.file_tree.get_children():
+            values = list(self.file_tree.item(item, 'values'))
+            values[3] = "No"
+            self.file_tree.item(item, values=values)
+        
+        # Select only the highlighted item
+        values = list(self.file_tree.item(selected_item, 'values'))
+        values[3] = "Yes"
+        self.file_tree.item(selected_item, values=values)
+        
+        # Update peak configuration tab with selected file
+        self.update_peak_config_file()
+    
+    def clear_selection(self):
+        """Clear file selection"""
+        for item in self.file_tree.get_children():
+            values = list(self.file_tree.item(item, 'values'))
+            values[3] = "No"
+            self.file_tree.item(item, values=values)
+        
+        # Clear peak configuration file as well
+        self.viz_file_var.set("")
+        self.viz_status_label.config(text="No file selected")
+    
+    def update_peak_config_file(self):
+        """Update the peak configuration tab with the selected file"""
+        selected_files = self.get_selected_files()
+        if selected_files:
+            self.viz_file_var.set(str(selected_files[0]))
+            self.viz_status_label.config(text=f"Using: {selected_files[0].name}")
+        else:
+            self.viz_file_var.set("")
+            self.viz_status_label.config(text="No file selected")
     
     def scan_tiff_files(self):
         """Scan directory for TIFF files"""
@@ -817,22 +866,8 @@ class STORMApp:
             
             self.file_tree.insert('', tk.END, values=(i, file_path.name, size_str, "No"))
     
-    def select_all_files(self):
-        """Select all files for training"""
-        for item in self.file_tree.get_children():
-            values = list(self.file_tree.item(item, 'values'))
-            values[3] = "Yes"
-            self.file_tree.item(item, values=values)
-    
-    def clear_selection(self):
-        """Clear file selection"""
-        for item in self.file_tree.get_children():
-            values = list(self.file_tree.item(item, 'values'))
-            values[3] = "No"
-            self.file_tree.item(item, values=values)
-    
     def get_selected_files(self):
-        """Get list of selected files"""
+        """Get list of selected files (should be only one)"""
         selected = []
         for item in self.file_tree.get_children():
             values = self.file_tree.item(item, 'values')
@@ -842,26 +877,25 @@ class STORMApp:
         return selected
     
     def preview_files(self):
-        """Preview selected files"""
+        """Preview selected file"""
         selected = self.get_selected_files()
         if not selected:
-            messagebox.showwarning("Warning", "No files selected")
+            messagebox.showwarning("Warning", "No file selected")
             return
         
-        message = f"Selected {len(selected)} files for training:\n\n"
-        for file_path in selected[:10]:  # Show first 10
-            message += f"• {file_path.name}\n"
-        
-        if len(selected) > 10:
-            message += f"... and {len(selected) - 10} more files"
-        
-        messagebox.showinfo("Selected Files", message)
+        file_path = selected[0]
+        message = f"Selected file for training:\n\n• {file_path.name}\n\nPath: {file_path}"
+        messagebox.showinfo("Selected File", message)
     
     def start_training(self):
         """Start training in a separate thread"""
         selected_files = self.get_selected_files()
         if not selected_files:
-            messagebox.showwarning("Warning", "Please select files for training")
+            messagebox.showwarning("Warning", "Please select a file for training in the Data Selection tab")
+            return
+        
+        if len(selected_files) > 1:
+            messagebox.showerror("Error", "Multiple files selected. This is a single-stack model - please select only one file.")
             return
         
         # Update configuration from GUI
@@ -875,6 +909,9 @@ class STORMApp:
         self.log_text.config(state=tk.NORMAL)
         self.log_text.delete(1.0, tk.END)
         self.log_text.config(state=tk.DISABLED)
+        
+        # Log which file is being used for training
+        self.log_message(f"Starting training with single stack: {selected_files[0].name}")
         
         # Start training thread
         self.training_thread = threading.Thread(
