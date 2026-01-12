@@ -43,7 +43,7 @@ class STORMConfig:
     """Configuration class for STORM microscopy analysis"""
     
     def __init__(self):
-        self.distance = 18
+        self.distance = 24
         self.start_z = 0
         self.end_z = 161
         self.csum_slices = 30
@@ -346,7 +346,7 @@ class STORMApp:
     def __init__(self, root):
         self.root = root
         self.root.title("STORM Microscopy Analysis - Height Regression")
-        self.root.geometry("1200x800")
+        self.root.geometry("3600x2400")
         
         # Configuration
         self.config = STORMConfig()
@@ -410,10 +410,10 @@ class STORMApp:
         
         # Create grid of parameters
         params = [
-            ("Distance:", "distance", self.config.distance),
+            ("Cutout size:", "distance", self.config.distance),
             ("Prominence Sigma:", "prominence_sigma", self.config.prominence_sigma),
-            ("Min Distance:", "min_distance", self.config.min_distance),
-            ("Support Radius:", "support_radius", self.config.support_radius),
+            ("Minimum distance between peaks:", "min_distance", self.config.min_distance),
+            ("Radius used to reject hot pixels:", "support_radius", self.config.support_radius),
             ("Start Z:", "start_z", self.config.start_z),
             ("End Z:", "end_z", self.config.end_z),
             ("Sum Slices:", "csum_slices", self.config.csum_slices),
@@ -498,9 +498,17 @@ class STORMApp:
         columns = ('Index', 'Filename', 'Size', 'Selected')
         self.file_tree = ttk.Treeview(files_frame, columns=columns, show='headings', height=10)
         
+        # Set column widths: Filename gets 50%, others get 16.67% each
+        column_widths = {
+            'Index': 100,
+            'Filename': 400,  # Much larger for filename
+            'Size': 100,
+            'Selected': 100
+        }
+        
         for col in columns:
             self.file_tree.heading(col, text=col)
-            self.file_tree.column(col, width=150)
+            self.file_tree.column(col, width=column_widths[col])
         
         # Add double-click to toggle selection
         self.file_tree.bind('<Double-1>', self.toggle_file_selection)
@@ -540,7 +548,7 @@ class STORMApp:
         self.batch_size_var = tk.IntVar(value=self.config.batch_size)
         ttk.Entry(params_frame, textvariable=self.batch_size_var, width=10).grid(row=0, column=3, padx=(0, 20))
         
-        ttk.Label(params_frame, text="Distance:").grid(row=0, column=4, sticky=tk.W, padx=(0, 5))
+        ttk.Label(params_frame, text="Cutout size:").grid(row=0, column=4, sticky=tk.W, padx=(0, 5))
         self.distance_var = tk.IntVar(value=self.config.distance)
         ttk.Entry(params_frame, textvariable=self.distance_var, width=10).grid(row=0, column=5)
         
