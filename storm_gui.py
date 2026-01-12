@@ -1,0 +1,763 @@
+#!/usr/bin/env python3
+"""
+STORM Microscopy GUI Application
+
+A user-friendly graphical interface for STORM microscopy analysis with
+file selection, training controls, and real-time progress monitoring.
+
+Author: ItzWhole
+"""
+
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox, scrolledtext
+import threading
+import queue
+import os
+import sys
+from pathlib import Path
+import logging
+from typing import Optional, List
+import json
+
+# Add storm_core to path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    from storm_core.data_processing import find_tiff_files, crop_and_sum_stack, extract_psf_cutouts, normalize_0_to_1
+    from storm_core.neural_network import (
+        build_astigmatic_psf_network, train_val_split_by_group, 
+        build_augmenter, make_dataset, setup_callbacks
+    )
+    from storm_core.evaluation import rescale_01_to_nm, plot_true_vs_pred_heatmap, plot_random_psfs
+    import numpy as np
+    import tifffile as tiff
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+    import tensorflow as tf
+except ImportError as e:
+    print(f"Import error: {e}")
+    print("Please ensure you're running in the storm_env virtual environment")
+    sys.exit(1)
+
+class STORMConfig:
+    """Configuration class for STORM microscopy analysis"""
+    
+    def __init__(self):
+        self.distance = 18
+        self.start_z = 0
+        self.end_z = 161
+        self.csum_slices = 30
+        self.min_distance = 5
+        self.prominence_sigma = 10.0
+        self.support_radius = 2
+        self.batch_size = 64
+        self.epochs = 100
+        self.learning_rate = 1e-3
+        self.val_split = 0.2
+        
+        # Paths
+        self.data_path = None
+        self.output_path = Path("./output")
+        self.model_path = None
+
+class LogHandler(logging.Handler):
+    """Custom logging handler to redirect logs to GUI"""
+    
+    def __init__(self, text_widget, queue_obj):
+        super().__init__()
+        self.text_widget = text_widget
+        self.queue = queue_obj
+    
+    def emit(self, record):
+        msg = self.format(record)
+        self.queue.put(('log', msg))
+
+class STORMTrainerGUI:
+    """GUI wrapper for STORM training functionality"""
+    
+    def __init__(self, config: STORMConfig, progress_callback=None, log_callback=None):
+        self.config = config
+        self.progress_callback = progress_callback
+        self.log_callback = log_callback
+        self.model = None
+        self.training_data = None
+        
+    def load_training_data(self, train_files: List[Path]):
+        """Load and process training data from TIFF files"""
+        all_cutouts = []
+        all_heights = []
+        all_group_ids = []
+        
+        total_files = len(train_files)
+        
+        for i, tiff_path in enumerate(train_files):
+            if self.progress_callback:
+                progress = (i / total_files) * 50  # First 50% for data loading
+                self.progress_callback(progress, f"Processing file {i+1}/{total_files}: {tiff_path.name}")
+            
+            if self.log_callback:
+                self.log_callback(f"Loading TIFF file: {tiff_path.name}")
+            
+            # Load TIFF stack
+            stack = tiff.imread(tiff_path)
+            
+            # Create summed image for peak detection
+            csum_image = crop_and_sum_stack(
+                stack, self.config.start_z, self.config.end_z, self.config.csum_slices
+            )
+            
+            # Extract PSF cutouts
+            cutouts, group_ids, peaks = extract_psf_cutouts(
+                stack, csum_image, self.config.distance,
+                min_distance=self.config.min_distance,
+                prominence_sigma=self.config.prominence_sigma,
+                support_radius=self.config.support_radius,
+                start=self.config.start_z,
+                end=self.config.end_z,
+                plot=False  # Don't show plots in GUI mode
+            )
+            
+            # Process cutouts
+            psfs = np.array([cutout[0] for cutout in cutouts])
+            heights = np.array([cutout[1] for cutout in cutouts])
+            
+            # Adjust group IDs to be globally unique
+            adjusted_group_ids = np.array(group_ids) + len(all_cutouts)
+            
+            all_cutouts.extend(psfs)
+            all_heights.extend(heights)
+            all_group_ids.extend(adjusted_group_ids)
+        
+        # Convert to arrays and normalize
+        X = np.expand_dims(np.array(all_cutouts), axis=-1)
+        y = np.array(all_heights)
+        group_ids = np.array(all_group_ids)
+        
+        # Normalize data
+        X = normalize_0_to_1(X)
+        y = (y - np.min(y)) / (np.max(y) - np.min(y))
+        
+        self.training_data = (X, y, group_ids)
+        
+        if self.log_callback:
+            self.log_callback(f"Loaded {len(X)} training samples from {len(train_files)} files")
+        
+        return X, y, group_ids
+    
+    def train_model(self, X, y, group_ids):
+        """Train the neural network model"""
+        
+        if self.progress_callback:
+            self.progress_callback(50, "Preparing training data...")
+        
+        # Split data by groups
+        (X_train, y_train), (X_val, y_val) = train_val_split_by_group(
+            X, y, group_ids, val_size=self.config.val_split
+        )
+        
+        if self.progress_callback:
+            self.progress_callback(60, "Building neural network...")
+        
+        # Build model
+        input_shape = (self.config.distance + 1, self.config.distance + 1, 1)
+        self.model = build_astigmatic_psf_network(input_shape)
+        
+        # Setup data augmentation
+        augmenter = build_augmenter(self.config.distance)
+        
+        # Create datasets
+        train_ds = make_dataset(X_train, y_train, 
+                              batch_size=self.config.batch_size, 
+                              training=True, augmenter=augmenter)
+        val_ds = make_dataset(X_val, y_val, 
+                            batch_size=self.config.batch_size, 
+                            training=False)
+        
+        if self.progress_callback:
+            self.progress_callback(70, "Starting model training...")
+        
+        # Setup callbacks
+        self.config.output_path.mkdir(parents=True, exist_ok=True)
+        model_path = self.config.output_path / f"model_distance_{self.config.distance}.keras"
+        callbacks = setup_callbacks(str(model_path))
+        
+        # Custom callback for progress updates
+        class ProgressCallback(tf.keras.callbacks.Callback):
+            def __init__(self, progress_func, log_func, total_epochs):
+                super().__init__()
+                self.progress_func = progress_func
+                self.log_func = log_func
+                self.total_epochs = total_epochs
+            
+            def on_epoch_end(self, epoch, logs=None):
+                if self.progress_func:
+                    progress = 70 + (epoch + 1) / self.total_epochs * 30  # Last 30% for training
+                    self.progress_func(progress, f"Epoch {epoch + 1}/{self.total_epochs}")
+                
+                if self.log_func and logs:
+                    self.log_func(f"Epoch {epoch + 1}: loss={logs.get('loss', 0):.4f}, "
+                                f"val_loss={logs.get('val_loss', 0):.4f}, "
+                                f"mae={logs.get('mae', 0):.4f}")
+        
+        callbacks.append(ProgressCallback(self.progress_callback, self.log_callback, self.config.epochs))
+        
+        # Train model
+        if self.log_callback:
+            self.log_callback("Starting model training...")
+        
+        history = self.model.fit(
+            train_ds,
+            validation_data=val_ds,
+            epochs=self.config.epochs,
+            callbacks=callbacks,
+            verbose=0  # Suppress default output
+        )
+        
+        if self.progress_callback:
+            self.progress_callback(100, "Training completed!")
+        
+        if self.log_callback:
+            self.log_callback(f"Training completed. Model saved to: {model_path}")
+        
+        return self.model, history
+
+class STORMApp:
+    """Main STORM Microscopy GUI Application"""
+    
+    def __init__(self, root):
+        self.root = root
+        self.root.title("STORM Microscopy Analysis - Height Regression")
+        self.root.geometry("1200x800")
+        
+        # Configuration
+        self.config = STORMConfig()
+        
+        # Threading
+        self.training_thread = None
+        self.queue = queue.Queue()
+        
+        # Data
+        self.tiff_files = []
+        self.selected_files = []
+        self.model = None
+        
+        # Setup logging
+        self.setup_logging()
+        
+        # Create GUI
+        self.create_widgets()
+        
+        # Start queue processing
+        self.process_queue()
+    
+    def setup_logging(self):
+        """Setup logging to redirect to GUI"""
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
+        
+        # Create handler that sends logs to queue
+        handler = LogHandler(None, self.queue)
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
+    
+    def create_widgets(self):
+        """Create the main GUI widgets"""
+        
+        # Create notebook for tabs
+        notebook = ttk.Notebook(self.root)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Data Selection Tab
+        self.create_data_tab(notebook)
+        
+        # Training Tab
+        self.create_training_tab(notebook)
+        
+        # Prediction Tab
+        self.create_prediction_tab(notebook)
+        
+        # Configuration Tab
+        self.create_config_tab(notebook)
+    
+    def create_data_tab(self, notebook):
+        """Create data selection and preview tab"""
+        data_frame = ttk.Frame(notebook)
+        notebook.add(data_frame, text="Data Selection")
+        
+        # Directory selection
+        dir_frame = ttk.LabelFrame(data_frame, text="Data Directory", padding=10)
+        dir_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        self.data_dir_var = tk.StringVar()
+        ttk.Entry(dir_frame, textvariable=self.data_dir_var, width=60).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(dir_frame, text="Browse", command=self.browse_data_directory).pack(side=tk.LEFT)
+        ttk.Button(dir_frame, text="Scan Files", command=self.scan_tiff_files).pack(side=tk.LEFT, padx=(10, 0))
+        
+        # File list
+        files_frame = ttk.LabelFrame(data_frame, text="Available TIFF Files", padding=10)
+        files_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # Create treeview for file selection
+        columns = ('Index', 'Filename', 'Size', 'Selected')
+        self.file_tree = ttk.Treeview(files_frame, columns=columns, show='headings', height=10)
+        
+        for col in columns:
+            self.file_tree.heading(col, text=col)
+            self.file_tree.column(col, width=150)
+        
+        scrollbar = ttk.Scrollbar(files_frame, orient=tk.VERTICAL, command=self.file_tree.yview)
+        self.file_tree.configure(yscrollcommand=scrollbar.set)
+        
+        self.file_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # File selection buttons
+        button_frame = ttk.Frame(data_frame)
+        button_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        ttk.Button(button_frame, text="Select All", command=self.select_all_files).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="Clear Selection", command=self.clear_selection).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Preview Selected", command=self.preview_files).pack(side=tk.LEFT, padx=5)
+    
+    def create_training_tab(self, notebook):
+        """Create training configuration and control tab"""
+        train_frame = ttk.Frame(notebook)
+        notebook.add(train_frame, text="Training")
+        
+        # Training controls
+        control_frame = ttk.LabelFrame(train_frame, text="Training Controls", padding=10)
+        control_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # Training parameters
+        params_frame = ttk.Frame(control_frame)
+        params_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Label(params_frame, text="Epochs:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
+        self.epochs_var = tk.IntVar(value=self.config.epochs)
+        ttk.Entry(params_frame, textvariable=self.epochs_var, width=10).grid(row=0, column=1, padx=(0, 20))
+        
+        ttk.Label(params_frame, text="Batch Size:").grid(row=0, column=2, sticky=tk.W, padx=(0, 5))
+        self.batch_size_var = tk.IntVar(value=self.config.batch_size)
+        ttk.Entry(params_frame, textvariable=self.batch_size_var, width=10).grid(row=0, column=3, padx=(0, 20))
+        
+        ttk.Label(params_frame, text="Distance:").grid(row=0, column=4, sticky=tk.W, padx=(0, 5))
+        self.distance_var = tk.IntVar(value=self.config.distance)
+        ttk.Entry(params_frame, textvariable=self.distance_var, width=10).grid(row=0, column=5)
+        
+        # Training buttons
+        button_frame = ttk.Frame(control_frame)
+        button_frame.pack(fill=tk.X)
+        
+        self.train_button = ttk.Button(button_frame, text="Start Training", command=self.start_training)
+        self.train_button.pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.stop_button = ttk.Button(button_frame, text="Stop Training", command=self.stop_training, state=tk.DISABLED)
+        self.stop_button.pack(side=tk.LEFT, padx=(0, 10))
+        
+        ttk.Button(button_frame, text="Save Model", command=self.save_model).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(button_frame, text="Load Model", command=self.load_model).pack(side=tk.LEFT)
+        
+        # Progress bar
+        progress_frame = ttk.LabelFrame(train_frame, text="Training Progress", padding=10)
+        progress_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        self.progress_var = tk.DoubleVar()
+        self.progress_bar = ttk.Progressbar(progress_frame, variable=self.progress_var, maximum=100)
+        self.progress_bar.pack(fill=tk.X, pady=(0, 5))
+        
+        self.progress_label = ttk.Label(progress_frame, text="Ready to train")
+        self.progress_label.pack()
+        
+        # Training log
+        log_frame = ttk.LabelFrame(train_frame, text="Training Log", padding=10)
+        log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        self.log_text = scrolledtext.ScrolledText(log_frame, height=15, state=tk.DISABLED)
+        self.log_text.pack(fill=tk.BOTH, expand=True)
+    
+    def create_prediction_tab(self, notebook):
+        """Create prediction and evaluation tab"""
+        pred_frame = ttk.Frame(notebook)
+        notebook.add(pred_frame, text="Prediction")
+        
+        # File selection for prediction
+        file_frame = ttk.LabelFrame(pred_frame, text="Select File for Prediction", padding=10)
+        file_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        self.pred_file_var = tk.StringVar()
+        ttk.Entry(file_frame, textvariable=self.pred_file_var, width=60).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(file_frame, text="Browse", command=self.browse_prediction_file).pack(side=tk.LEFT)
+        ttk.Button(file_frame, text="Predict", command=self.make_prediction).pack(side=tk.LEFT, padx=(10, 0))
+        
+        # Results display
+        results_frame = ttk.LabelFrame(pred_frame, text="Prediction Results", padding=10)
+        results_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # Placeholder for matplotlib plots
+        self.results_text = scrolledtext.ScrolledText(results_frame, height=20, state=tk.DISABLED)
+        self.results_text.pack(fill=tk.BOTH, expand=True)
+    
+    def create_config_tab(self, notebook):
+        """Create configuration tab"""
+        config_frame = ttk.Frame(notebook)
+        notebook.add(config_frame, text="Configuration")
+        
+        # Peak detection parameters
+        peak_frame = ttk.LabelFrame(config_frame, text="Peak Detection Parameters", padding=10)
+        peak_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # Create grid of parameters
+        params = [
+            ("Prominence Sigma:", "prominence_sigma", self.config.prominence_sigma),
+            ("Min Distance:", "min_distance", self.config.min_distance),
+            ("Support Radius:", "support_radius", self.config.support_radius),
+            ("Start Z:", "start_z", self.config.start_z),
+            ("End Z:", "end_z", self.config.end_z),
+            ("Sum Slices:", "csum_slices", self.config.csum_slices),
+        ]
+        
+        self.param_vars = {}
+        for i, (label, param, default) in enumerate(params):
+            row = i // 2
+            col = (i % 2) * 2
+            
+            ttk.Label(peak_frame, text=label).grid(row=row, column=col, sticky=tk.W, padx=(0, 5), pady=2)
+            var = tk.DoubleVar(value=default) if isinstance(default, float) else tk.IntVar(value=default)
+            self.param_vars[param] = var
+            ttk.Entry(peak_frame, textvariable=var, width=15).grid(row=row, column=col+1, padx=(0, 20), pady=2)
+        
+        # Save/Load configuration
+        config_buttons = ttk.Frame(config_frame)
+        config_buttons.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Button(config_buttons, text="Save Configuration", command=self.save_config).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(config_buttons, text="Load Configuration", command=self.load_config).pack(side=tk.LEFT)
+        ttk.Button(config_buttons, text="Reset to Defaults", command=self.reset_config).pack(side=tk.LEFT, padx=(10, 0))
+    
+    def browse_data_directory(self):
+        """Browse for data directory"""
+        directory = filedialog.askdirectory(title="Select TIFF Data Directory")
+        if directory:
+            self.data_dir_var.set(directory)
+            self.scan_tiff_files()
+    
+    def scan_tiff_files(self):
+        """Scan directory for TIFF files"""
+        data_dir = self.data_dir_var.get()
+        if not data_dir:
+            messagebox.showwarning("Warning", "Please select a data directory first")
+            return
+        
+        try:
+            self.tiff_files = find_tiff_files(Path(data_dir))
+            self.update_file_list()
+            self.log_message(f"Found {len(self.tiff_files)} TIFF files")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error scanning directory: {str(e)}")
+    
+    def update_file_list(self):
+        """Update the file list display"""
+        # Clear existing items
+        for item in self.file_tree.get_children():
+            self.file_tree.delete(item)
+        
+        # Add files
+        for i, file_path in enumerate(self.tiff_files):
+            try:
+                size = file_path.stat().st_size / (1024 * 1024)  # MB
+                size_str = f"{size:.1f} MB"
+            except:
+                size_str = "Unknown"
+            
+            self.file_tree.insert('', tk.END, values=(i, file_path.name, size_str, "No"))
+    
+    def select_all_files(self):
+        """Select all files for training"""
+        for item in self.file_tree.get_children():
+            values = list(self.file_tree.item(item, 'values'))
+            values[3] = "Yes"
+            self.file_tree.item(item, values=values)
+    
+    def clear_selection(self):
+        """Clear file selection"""
+        for item in self.file_tree.get_children():
+            values = list(self.file_tree.item(item, 'values'))
+            values[3] = "No"
+            self.file_tree.item(item, values=values)
+    
+    def get_selected_files(self):
+        """Get list of selected files"""
+        selected = []
+        for item in self.file_tree.get_children():
+            values = self.file_tree.item(item, 'values')
+            if values[3] == "Yes":
+                index = int(values[0])
+                selected.append(self.tiff_files[index])
+        return selected
+    
+    def preview_files(self):
+        """Preview selected files"""
+        selected = self.get_selected_files()
+        if not selected:
+            messagebox.showwarning("Warning", "No files selected")
+            return
+        
+        message = f"Selected {len(selected)} files for training:\n\n"
+        for file_path in selected[:10]:  # Show first 10
+            message += f"• {file_path.name}\n"
+        
+        if len(selected) > 10:
+            message += f"... and {len(selected) - 10} more files"
+        
+        messagebox.showinfo("Selected Files", message)
+    
+    def start_training(self):
+        """Start training in a separate thread"""
+        selected_files = self.get_selected_files()
+        if not selected_files:
+            messagebox.showwarning("Warning", "Please select files for training")
+            return
+        
+        # Update configuration from GUI
+        self.update_config_from_gui()
+        
+        # Disable training button
+        self.train_button.config(state=tk.DISABLED)
+        self.stop_button.config(state=tk.NORMAL)
+        
+        # Clear log
+        self.log_text.config(state=tk.NORMAL)
+        self.log_text.delete(1.0, tk.END)
+        self.log_text.config(state=tk.DISABLED)
+        
+        # Start training thread
+        self.training_thread = threading.Thread(
+            target=self.train_model_thread, 
+            args=(selected_files,),
+            daemon=True
+        )
+        self.training_thread.start()
+    
+    def train_model_thread(self, selected_files):
+        """Training thread function"""
+        try:
+            trainer = STORMTrainerGUI(
+                self.config,
+                progress_callback=self.update_progress,
+                log_callback=self.log_message
+            )
+            
+            # Load data
+            X, y, group_ids = trainer.load_training_data(selected_files)
+            
+            # Train model
+            model, history = trainer.train_model(X, y, group_ids)
+            
+            self.model = model
+            self.queue.put(('training_complete', 'Training completed successfully!'))
+            
+        except Exception as e:
+            self.queue.put(('error', f"Training error: {str(e)}"))
+        finally:
+            self.queue.put(('training_finished', None))
+    
+    def stop_training(self):
+        """Stop training (placeholder - would need more complex implementation)"""
+        messagebox.showinfo("Info", "Training stop requested (implementation needed)")
+    
+    def update_progress(self, value, message):
+        """Update progress bar and message"""
+        self.queue.put(('progress', (value, message)))
+    
+    def log_message(self, message):
+        """Add message to log"""
+        self.queue.put(('log', message))
+    
+    def update_config_from_gui(self):
+        """Update configuration from GUI values"""
+        self.config.epochs = self.epochs_var.get()
+        self.config.batch_size = self.batch_size_var.get()
+        self.config.distance = self.distance_var.get()
+        
+        for param, var in self.param_vars.items():
+            setattr(self.config, param, var.get())
+    
+    def save_model(self):
+        """Save trained model"""
+        if self.model is None:
+            messagebox.showwarning("Warning", "No trained model to save")
+            return
+        
+        filename = filedialog.asksaveasfilename(
+            title="Save Model",
+            defaultextension=".keras",
+            filetypes=[("Keras models", "*.keras"), ("All files", "*.*")]
+        )
+        
+        if filename:
+            try:
+                self.model.save(filename)
+                messagebox.showinfo("Success", f"Model saved to {filename}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Error saving model: {str(e)}")
+    
+    def load_model(self):
+        """Load trained model"""
+        filename = filedialog.askopenfilename(
+            title="Load Model",
+            filetypes=[("Keras models", "*.keras"), ("All files", "*.*")]
+        )
+        
+        if filename:
+            try:
+                self.model = tf.keras.models.load_model(filename)
+                messagebox.showinfo("Success", f"Model loaded from {filename}")
+                self.log_message(f"Model loaded: {filename}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Error loading model: {str(e)}")
+    
+    def browse_prediction_file(self):
+        """Browse for prediction file"""
+        filename = filedialog.askopenfilename(
+            title="Select TIFF file for prediction",
+            filetypes=[("TIFF files", "*.tif *.tiff"), ("All files", "*.*")]
+        )
+        
+        if filename:
+            self.pred_file_var.set(filename)
+    
+    def make_prediction(self):
+        """Make prediction on selected file"""
+        if self.model is None:
+            messagebox.showwarning("Warning", "Please load a trained model first")
+            return
+        
+        pred_file = self.pred_file_var.get()
+        if not pred_file:
+            messagebox.showwarning("Warning", "Please select a file for prediction")
+            return
+        
+        try:
+            # This would implement the prediction logic
+            self.results_text.config(state=tk.NORMAL)
+            self.results_text.delete(1.0, tk.END)
+            self.results_text.insert(tk.END, f"Prediction on {pred_file}\n")
+            self.results_text.insert(tk.END, "Implementation in progress...\n")
+            self.results_text.config(state=tk.DISABLED)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Prediction error: {str(e)}")
+    
+    def save_config(self):
+        """Save configuration to file"""
+        filename = filedialog.asksaveasfilename(
+            title="Save Configuration",
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+        )
+        
+        if filename:
+            try:
+                config_dict = {
+                    'distance': self.distance_var.get(),
+                    'epochs': self.epochs_var.get(),
+                    'batch_size': self.batch_size_var.get(),
+                }
+                
+                for param, var in self.param_vars.items():
+                    config_dict[param] = var.get()
+                
+                with open(filename, 'w') as f:
+                    json.dump(config_dict, f, indent=2)
+                
+                messagebox.showinfo("Success", f"Configuration saved to {filename}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Error saving configuration: {str(e)}")
+    
+    def load_config(self):
+        """Load configuration from file"""
+        filename = filedialog.askopenfilename(
+            title="Load Configuration",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+        )
+        
+        if filename:
+            try:
+                with open(filename, 'r') as f:
+                    config_dict = json.load(f)
+                
+                # Update GUI variables
+                if 'distance' in config_dict:
+                    self.distance_var.set(config_dict['distance'])
+                if 'epochs' in config_dict:
+                    self.epochs_var.set(config_dict['epochs'])
+                if 'batch_size' in config_dict:
+                    self.batch_size_var.set(config_dict['batch_size'])
+                
+                for param, var in self.param_vars.items():
+                    if param in config_dict:
+                        var.set(config_dict[param])
+                
+                messagebox.showinfo("Success", f"Configuration loaded from {filename}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Error loading configuration: {str(e)}")
+    
+    def reset_config(self):
+        """Reset configuration to defaults"""
+        default_config = STORMConfig()
+        
+        self.distance_var.set(default_config.distance)
+        self.epochs_var.set(default_config.epochs)
+        self.batch_size_var.set(default_config.batch_size)
+        
+        self.param_vars['prominence_sigma'].set(default_config.prominence_sigma)
+        self.param_vars['min_distance'].set(default_config.min_distance)
+        self.param_vars['support_radius'].set(default_config.support_radius)
+        self.param_vars['start_z'].set(default_config.start_z)
+        self.param_vars['end_z'].set(default_config.end_z)
+        self.param_vars['csum_slices'].set(default_config.csum_slices)
+        
+        messagebox.showinfo("Success", "Configuration reset to defaults")
+    
+    def process_queue(self):
+        """Process messages from worker threads"""
+        try:
+            while True:
+                msg_type, data = self.queue.get_nowait()
+                
+                if msg_type == 'progress':
+                    value, message = data
+                    self.progress_var.set(value)
+                    self.progress_label.config(text=message)
+                
+                elif msg_type == 'log':
+                    self.log_text.config(state=tk.NORMAL)
+                    self.log_text.insert(tk.END, data + '\n')
+                    self.log_text.see(tk.END)
+                    self.log_text.config(state=tk.DISABLED)
+                
+                elif msg_type == 'training_complete':
+                    messagebox.showinfo("Success", data)
+                
+                elif msg_type == 'error':
+                    messagebox.showerror("Error", data)
+                
+                elif msg_type == 'training_finished':
+                    self.train_button.config(state=tk.NORMAL)
+                    self.stop_button.config(state=tk.DISABLED)
+                
+        except queue.Empty:
+            pass
+        
+        # Schedule next check
+        self.root.after(100, self.process_queue)
+
+def main():
+    """Main application entry point"""
+    root = tk.Tk()
+    app = STORMApp(root)
+    root.mainloop()
+
+if __name__ == "__main__":
+    main()
