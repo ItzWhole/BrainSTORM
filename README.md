@@ -1,6 +1,6 @@
 # STORM Microscopy Height Regression
 
-A modular application for processing STORM microscopy TIFF stacks, detecting peaks, and training neural networks to predict z-heights from PSF appearance using astigmatism.
+A modular application for traning a neural network capable of regressing the Z-values of PSFs in STORM microscopy setups. The model trains the model based off of one stack and saves it automatically as an h5 file. In the future I intend to implement automatic time series analysis as well. It was constructed with asymmetric astigmatic PSFs in mind, but should work for any setup where the deformations above Z=0 and below Z=0 are asymmetrical.
 
 ## Features
 
@@ -100,15 +100,13 @@ Key parameters can be adjusted in the `STORMConfig` class:
 
 The neural network uses a multi-path architecture optimized for astigmatic PSF analysis:
 
-- **Path 1**: Standard 3x3 convolutions
-- **Path 2**: Horizontal emphasis (3x5 kernels)
-- **Path 3**: Vertical emphasis (5x3 kernels)
+<img width="944" height="622" alt="image" src="https://github.com/user-attachments/assets/be9e48da-c5c5-4650-b2c1-611aa2aed1ee" />
 
 This design captures the asymmetric nature of astigmatic PSFs at different z-heights.
 
 ## Data Processing Pipeline
 
-1. **TIFF Loading**: Load 161-slice z-stacks
+1. **TIFF Loading**: Load z-stacks
 2. **Peak Detection**: Sum final slices, detect local maxima
 3. **Cutout Extraction**: Extract PSF regions around peaks
 4. **Normalization**: Per-image [0,1] normalization
@@ -134,7 +132,6 @@ python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU')
 
 - Reduce `batch_size` in config
 - Use smaller `distance` values
-- Process fewer files at once
 
 ## Contributing
 
@@ -142,7 +139,3 @@ python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU')
 2. Add type hints and docstrings
 3. Test with sample data
 4. Update documentation
-
-## License
-
-[Add your license here]
