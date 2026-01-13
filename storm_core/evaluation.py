@@ -39,8 +39,7 @@ def plot_true_vs_pred_heatmap(y_true: np.ndarray,
                              figsize: Tuple[int, int] = (8, 6),
                              log_scale: bool = True,
                              nm_range: Optional[Tuple[float, float]] = None,
-                             plot_limits: Tuple[float, float] = (-2000.0, 2000.0),
-                             ignore_percent: float = 15.0,
+                             ignore_percent: float = 0.0,
                              start: int = 0,
                              end: int = 161) -> None:
     """
@@ -53,7 +52,6 @@ def plot_true_vs_pred_heatmap(y_true: np.ndarray,
         figsize: Figure size
         log_scale: Use log scale for colormap
         nm_range: Range in nanometers (computed if None)
-        plot_limits: Plot axis limits
         ignore_percent: Percentage of worst predictions to ignore
         start: Start z-index for nm conversion
         end: End z-index for nm conversion
@@ -100,10 +98,15 @@ def plot_true_vs_pred_heatmap(y_true: np.ndarray,
     plt.title(f"True vs Predicted Heights (MAE = {mae_nm:.1f} nm)")
     plt.grid(True, alpha=0.3)
     
-    # Add ideal line
-    plt.plot(plot_limits, plot_limits, "r--", linewidth=2, label="Ideal")
-    plt.xlim(plot_limits)
-    plt.ylim(plot_limits)
+    # Get current axis limits for ideal line
+    xlim = plt.xlim()
+    ylim = plt.ylim()
+    
+    # Add ideal line using the data range
+    line_min = max(xlim[0], ylim[0])
+    line_max = min(xlim[1], ylim[1])
+    plt.plot([line_min, line_max], [line_min, line_max], "r--", linewidth=2, label="Ideal")
+    
     plt.legend()
     plt.tight_layout()
     plt.show()
