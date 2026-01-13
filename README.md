@@ -100,7 +100,8 @@ Key parameters can be adjusted in the `STORMConfig` class:
 
 The neural network uses a multi-path architecture optimized for astigmatic PSF analysis:
 
-<img width="944" height="622" alt="image" src="https://github.com/user-attachments/assets/be9e48da-c5c5-4650-b2c1-611aa2aed1ee" />
+<img width="907" height="611" alt="image" src="https://github.com/user-attachments/assets/1a5ae4e6-82c2-4773-b340-94d55c7fb1d2" />
+
 
 This design captures the asymmetric nature of astigmatic PSFs at different z-heights.
 
