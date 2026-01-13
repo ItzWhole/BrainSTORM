@@ -17,6 +17,9 @@ A modular application for training a neural network capable of regressing the Z-
 - Python 3.8+
 - TensorFlow 2.8+ with GPU support
 
+Note: The project is tested with TensorFlow 2.13.1 and CUDA 11.8. Other versions may work but are not guaranteed.
+
+
 ## Installation
 
 ### 1. Setup WSL2 (if not already done)
@@ -52,7 +55,7 @@ source storm_env/bin/activate
 python storm_microscopy_app.py \
     --data-dir /path/to/tiff/files \
     --output-dir ./results \
-    --distance 18 \
+    --distance 24 \
     --train \
     --train-indices 20 17
 ```
