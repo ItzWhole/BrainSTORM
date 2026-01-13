@@ -1,6 +1,6 @@
 # STORM Microscopy Height Regression
 
-A modular application for traning a neural network capable of regressing the Z-values of PSFs in STORM microscopy setups. The model is trained based off of one stack and saves it automatically as an h5 file. In the future I intend to implement automatic time series analysis as well. It was constructed with asymmetric astigmatic PSFs in mind, but should work for any setup where the deformations above Z=0 and below Z=0 are asymmetrical.
+A modular application for training a neural network capable of regressing the Z-values of PSFs in STORM microscopy setups. The model is trained based on one stack and saves it automatically as an h5 file. In the future I intend to implement automatic time series analysis as well. It was constructed with asymmetric astigmatic PSFs in mind, but should work for any setup where the deformations above Z=0 and below Z=0 are asymmetrical.
 
 ## Features
 
