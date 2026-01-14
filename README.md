@@ -150,7 +150,7 @@ python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU')
 This section demonstrates the performance of the trained neural network on real experimental data.
 The model was evaluated using single-molecule measurements acquired with the **CIBION nanoscope** using **SMATTO640N** fluorophores.
 
-The figure below shows axial localization results obtained from experimental PSFs, illustrating the model’s ability to recover z-positions from asymmetric astigmatic deformations.
+The figure below is a true vs predicted graph showing axial localization results obtained from experimental PSFs, illustrating the model’s ability to recover z-positions from asymmetric astigmatic deformations.
 
 <img width="843" height="705" alt="Axial localization results on experimental data" src="https://github.com/user-attachments/assets/c566a646-5f0d-40d6-b812-be4f6c4897d2" />
 
