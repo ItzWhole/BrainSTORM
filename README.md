@@ -325,8 +325,3 @@ Trained models (.h5 format) include metadata:
 
 5. **Optical setup dependency**: Any change to the cylindrical lens position, orientation, or objective requires retraining.
 
-## Citation
-
-If you use this software in your research, please cite the original work:
-
-*Laborero M., Mancini Bao L. "Clasificación axial de PSFs mediante redes neuronales en microscopía STORM astigmática" Universidad de Buenos Aires (2026)*
