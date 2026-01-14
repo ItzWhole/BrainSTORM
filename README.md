@@ -152,13 +152,15 @@ The model was evaluated using single-molecule measurements acquired with the **C
 
 The figure below is a true vs predicted graph showing axial localization results obtained from experimental PSFs, illustrating the model’s ability to recover z-positions from asymmetric astigmatic deformations.
 
-<img width="843" height="705" alt="Axial localization results on experimental data" src="https://github.com/user-attachments/assets/c566a646-5f0d-40d6-b812-be4f6c4897d2" />
+<img width="779" height="588" alt="image" src="https://github.com/user-attachments/assets/2715afcc-2fc9-4f03-8b1b-f6b9465157ca" />
+
 
 ### Comparison with Picasso
 
 The following figure compares the performance of several trained neural network models against **Picasso** (Jungmann Lab), a widely used software for 3D STORM localization.
 
-<img width="993" height="705" alt="Comparison with Picasso software" src="https://github.com/user-attachments/assets/a4ecad9d-a12d-4865-b513-c8cb22186c1a" />
+<img width="904" height="628" alt="image" src="https://github.com/user-attachments/assets/4638df31-c290-48b2-a9be-3e5ae640defe" />
+
 
 These results indicate that the proposed approach achieves improved axial localization performance compared to analytical fitting-based methods.
 
