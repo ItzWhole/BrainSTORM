@@ -165,6 +165,8 @@ The following figure compares the performance of several trained neural network 
 These results indicate that the proposed approach achieves improved axial localization performance compared to analytical fitting-based methods.
 
 
-Note: These results are shown for representative datasets and do not constitute a full statistical benchmark.
+Note: These results are shown for representative datasets and do not constitute a full statistical benchmark. For further details regarding the experimental setup, please contact:  
+**milaborero@gmail.com**
+
 
 
