@@ -143,3 +143,22 @@ python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU')
 2. Add type hints and docstrings
 3. Test with sample data
 4. Update documentation
+
+
+## Experimental Results
+
+This section demonstrates the performance of the trained neural network on real experimental data.
+The model was evaluated using single-molecule measurements acquired with the **CIBION nanoscope** using **SMATTO640N** fluorophores.
+
+The figure below shows axial localization results obtained from experimental PSFs, illustrating the model’s ability to recover z-positions from asymmetric astigmatic deformations.
+
+<img width="843" height="705" alt="Axial localization results on experimental data" src="https://github.com/user-attachments/assets/c566a646-5f0d-40d6-b812-be4f6c4897d2" />
+
+### Comparison with Picasso
+
+The following figure compares the performance of several trained neural network models against **Picasso** (Jungmann Lab), a widely used software for 3D STORM localization.
+
+<img width="993" height="705" alt="Comparison with Picasso software" src="https://github.com/user-attachments/assets/a4ecad9d-a12d-4865-b513-c8cb22186c1a" />
+
+These results indicate that the proposed approach achieves improved axial localization performance compared to analytical fitting-based methods.
+
