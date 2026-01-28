@@ -71,10 +71,11 @@ The CNN consists of:
 
 ## Features
 
-- **User-friendly GUI** with 4 main tabs for complete workflow
+- **User-friendly GUI** with 5 main tabs for complete workflow
 - **Peak detection and visualization** with configurable parameters
 - **Multi-stage neural network training** with GPU acceleration
 - **Model validation** with automatic dimension checking
+- **Time series analysis** with frame-by-frame peak localization and Z-height prediction
 - **Real-time training progress** with Keras logging
 - **Automatic CUDA/GPU setup** and diagnostics
 - **Model metadata storage** for reproducible results
@@ -218,6 +219,36 @@ python ../bin/storm_gui.py
 - Generate validation heatmap with **Generate Validation Heatmap**
 - View true vs predicted height comparison
 
+#### 5. Time Series Analysis Tab
+- **Select Time Series**: Choose a multi-frame TIFF file for analysis
+- **Select Model**: Load a trained .h5 model for Z-height prediction
+- **Output CSV Location**: Specify where to save analysis results
+- **Analysis Options**:
+  - **Analyze**: Process the complete time series
+  - **Analyze First 10 Frames**: Test mode for quick validation
+  - **Stop Analysis**: Gracefully halt processing if needed
+- **Real-time Analysis Log**: Monitor progress and view detailed processing information
+
+**Time Series Analysis Workflow**:
+1. **Frame-by-frame processing**: Each frame is processed independently
+2. **Bandpass filtering**: Applied only for peak detection (enhances contrast)
+3. **Peak detection**: Finds local maxima using adaptive thresholding
+4. **ROI extraction**: Extracts regions around detected peaks
+   - Filtered ROIs used for sub-pixel localization
+   - Raw ROIs fed to CNN for Z-height prediction
+5. **Sub-pixel localization**: Uses iterative weighted centroid method on filtered data
+6. **Z-height prediction**: CNN processes raw ROIs to predict axial position
+7. **CSV output**: Results saved with columns: peak_id, frame, x, y, z
+
+**Key Features**:
+- **Dynamic model detection**: Automatically detects expected cutout size from model input dimensions
+- **Dual ROI processing**: Uses filtered data for localization, raw data for CNN prediction
+- **Sub-pixel precision**: Achieves sub-pixel accuracy in X-Y localization
+- **Test mode**: Process only first 10 frames for quick validation
+- **Stop functionality**: Gracefully halt analysis and save partial results
+- **Comprehensive logging**: Timestamped log files for troubleshooting
+- **Progress tracking**: Real-time progress bar and detailed status updates
+
 ### Tips for Best Results
 
 1. **Data Quality**: Use high-quality Z-stacks with clear, isolated PSF patterns
@@ -238,6 +269,68 @@ Based on validation with ATTO647N single molecules:
 - **Mean absolute error**: ~117 nm (ignoring 5% outliers: ~92 nm)
 - **Comparison to Picasso**: ~47% error reduction across full range
 - **Error distribution**: Nearly constant across Z-range (slight improvement below Z=0)
+
+## Time Series Analysis
+
+The Time Series Analysis tab provides comprehensive frame-by-frame processing of multi-frame TIFF files for single-molecule localization with Z-height prediction.
+
+### Algorithm Overview
+
+The time series analysis implements a sophisticated pipeline that combines traditional peak detection with deep learning-based height regression:
+
+1. **Bandpass Filtering**: Uses Difference of Gaussians (DoG) filtering to enhance PSF contrast while suppressing background noise
+2. **Peak Detection**: Employs adaptive thresholding based on robust maximum estimation to find local maxima
+3. **ROI Extraction**: Extracts square regions around detected peaks with automatic size matching to model requirements
+4. **Quality Filtering**: Removes ROIs without single central peaks to ensure reliable localization
+5. **Sub-pixel Localization**: Uses iterative weighted centroid method on filtered data for precise X-Y positioning
+6. **Z-height Prediction**: Feeds raw (unfiltered) ROIs to trained CNN for axial position estimation
+
+### Key Technical Features
+
+**Dual Processing Pipeline**:
+- **Filtered data path**: Used for peak detection and X-Y localization (better contrast and noise reduction)
+- **Raw data path**: Used for CNN Z-height prediction (preserves original PSF characteristics the model was trained on)
+
+**Dynamic Model Adaptation**:
+- Automatically detects expected cutout size from loaded model input dimensions
+- Ensures compatibility between analysis parameters and trained model requirements
+- Supports models trained with different ROI sizes (e.g., 25×25, 15×15, etc.)
+
+**Robust Peak Detection**:
+- Adaptive thresholding based on image statistics (10% of robust maximum)
+- Configurable minimum distance between peaks to prevent over-detection
+- Quality filtering to ensure single-peak ROIs for reliable localization
+
+**Sub-pixel Localization Methods**:
+The `detectionalgo.py` module implements multiple localization algorithms:
+- **Iterative Weighted Centroid** (recommended): Iterative refinement with Gaussian weighting
+- **Radial Symmetry**: Based on gradient analysis for symmetric PSFs
+- **Image Moments**: Classical moment-based centroid calculation
+- **Spline Interpolation**: High-resolution peak finding via interpolation
+- **Adaptive Method**: Combines multiple methods for robust results
+
+### Output Format
+
+Results are saved as CSV files with the following columns:
+- **peak_id**: Unique identifier for each detected peak
+- **frame**: Frame number (1-based indexing)
+- **x**: Sub-pixel X coordinate in the original image
+- **y**: Sub-pixel Y coordinate in the original image  
+- **z**: Predicted Z-height in nanometers (typically -2000 to +2000 nm range)
+
+### Performance Characteristics
+
+**Processing Speed**: Depends on frame size, peak density, and model complexity
+- Typical processing: 1-10 frames per second on modern GPUs
+- Bottlenecks: Peak detection (CPU) and CNN inference (GPU)
+
+**Accuracy**: Inherits accuracy characteristics from the trained model
+- X-Y localization: Sub-pixel precision (typically <0.1 pixel standard deviation)
+- Z-height prediction: Model-dependent (typically ~100-200 nm for well-trained models)
+
+**Memory Usage**: Scales with frame size and number of detected peaks
+- Processes frames sequentially to minimize memory footprint
+- Automatic garbage collection between frames
 
 ## Troubleshooting
 
@@ -286,12 +379,21 @@ pip install -r requirements.txt
 - Use `/mnt/c/` prefix for Windows paths
 - Check file permissions
 
+### Time Series Analysis Issues
+- **No peaks detected**: Adjust bandpass filter parameters or check image quality
+- **Model dimension mismatch**: Ensure time series data matches training data characteristics
+- **Memory errors**: Process smaller frame ranges or reduce image size
+- **Slow processing**: Check GPU utilization and consider reducing peak detection sensitivity
+- **Path errors**: Verify TIFF file paths are correctly formatted for WSL (use `/mnt/c/` prefix)
+- **Analysis stops unexpectedly**: Check log files in `logs/` directory for detailed error messages
+
 ## File Structure
 
 ```
 BrainSTORM/
 ├── bin/
-│   └── storm_gui.py          # Main GUI application
+│   ├── storm_gui.py          # Main GUI application
+│   └── detectionalgo.py      # Peak detection and localization algorithms
 ├── storm_core/
 │   ├── data_processing.py    # TIFF processing, peak detection, PSF extraction
 │   ├── neural_network.py     # CNN architecture and training routines
