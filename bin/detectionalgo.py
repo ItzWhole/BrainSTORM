@@ -1,30 +1,38 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
 """
-Created on Tue Jan 27 16:17:00 2026
+STORM Peak Detection and Localization Algorithms
 
-@author: milab
+Comprehensive collection of algorithms for detecting and localizing PSF peaks
+in STORM microscopy data with sub-pixel precision.
+
+Author: milab
+Optimized for Time Series Analysis Version
 """
 
+import numpy as np
 import tifffile as tiff
 import matplotlib.pyplot as plt
-import numpy as np
-from scipy.ndimage import gaussian_filter
-from scipy.ndimage import maximum_filter
-
+from scipy.ndimage import gaussian_filter, maximum_filter
 from skimage.feature import peak_local_max
-#%%
+
+# Default test file path (only used when running as main script)
 TIFF_PATH = r"C:\Users\milab\Desktop\data tiff prueba\b3Rub_EM40_100ms_20pM_4mW_ROI2-3.tiff"
 
 def get_frame(frame_idx, path=TIFF_PATH):
     """
-    Load and plot a specific frame from a multi-frame TIFF.
+    Load a specific frame from a multi-frame TIFF file.
 
     Parameters
     ----------
     frame_idx : int
-        Index of the frame to extract (0-based).
+        Index of the frame to extract (0-based)
     path : str
-        Path to the TIFF file.
+        Path to the TIFF file
+
+    Returns
+    -------
+    numpy.ndarray
+        2D array containing the frame data
     """
     with tiff.TiffFile(path) as tif:
         frame = tif.asarray(key=frame_idx)
@@ -41,53 +49,75 @@ def get_frame(frame_idx, path=TIFF_PATH):
 
 def bandpass_filter(frame, sigma_small=1.2, sigma_large=6.0):
     """
-    Band-pass filter a STORM frame using Difference of Gaussians (DoG).
+    Apply band-pass filter using Difference of Gaussians (DoG) for PSF enhancement.
 
     Parameters
     ----------
-    frame : 2D numpy array
-        Raw image frame.
-    sigma_small : float
-        Gaussian sigma for PSF-scale smoothing.
-    sigma_large : float
-        Gaussian sigma for background smoothing.
+    frame : numpy.ndarray
+        Raw image frame
+    sigma_small : float, default=1.2
+        Gaussian sigma for PSF-scale smoothing
+    sigma_large : float, default=6.0
+        Gaussian sigma for background smoothing
 
     Returns
     -------
-    filtered : 2D numpy array
-        Band-pass filtered image.
+    numpy.ndarray
+        Band-pass filtered image with enhanced PSF contrast
     """
     frame = frame.astype(np.float32)
-
-    low_pass = gaussian_filter(frame, sigma=sigma_large)
+    
+    # Apply Gaussian filters
     high_pass = gaussian_filter(frame, sigma=sigma_small)
-
-    filtered = high_pass - low_pass
-
-    return filtered
+    low_pass = gaussian_filter(frame, sigma=sigma_large)
+    
+    # Difference of Gaussians
+    return high_pass - low_pass
 
 def find_local_peaks(image, threshold, min_distance=1):
     """
-    image: 2D numpy array (already filtered)
-    threshold: minimum intensity for a peak
-    min_distance: neighborhood size for peak suppression
+    Find local maxima in an image using efficient neighborhood suppression.
+    
+    Parameters
+    ----------
+    image : numpy.ndarray
+        2D image array (preferably filtered)
+    threshold : float
+        Minimum intensity for peak detection
+    min_distance : int, default=1
+        Minimum distance between peaks (neighborhood size)
+        
+    Returns
+    -------
+    numpy.ndarray
+        Array of peak coordinates as (row, col) pairs
     """
-    # Step 1: local maxima
+    # Local maxima detection using maximum filter
     neighborhood = maximum_filter(image, size=min_distance)
-    local_max = image == neighborhood
-
-    # Step 2: thresholding
+    local_max = (image == neighborhood)
+    
+    # Apply threshold
     detected_peaks = local_max & (image > threshold)
-
-    # Step 3: extract coordinates
-    peaks = np.column_stack(np.nonzero(detected_peaks))
-
-    return peaks
+    
+    # Extract coordinates
+    return np.column_stack(np.nonzero(detected_peaks))
 
 
 def robust_max(image, k=10):
     """
-    Returns the mean (or median) of the k brightest pixels.
+    Calculate robust maximum using mean of k brightest pixels.
+    
+    Parameters
+    ----------
+    image : numpy.ndarray
+        Input image
+    k : int, default=10
+        Number of brightest pixels to average
+        
+    Returns
+    -------
+    float
+        Robust maximum value
     """
     flat = image.ravel()
     brightest = np.partition(flat, -k)[-k:]
@@ -95,17 +125,28 @@ def robust_max(image, k=10):
 
 def show_peaks(image, peaks, x_size=4, linewidth=0.6):
     """
-    image : 2D numpy array
-    peaks : array-like of shape (N, 2), (row, col)
-    x_size : size of the X marker
-    linewidth : thickness of the X lines
+    Visualize detected peaks on an image.
+    
+    Parameters
+    ----------
+    image : numpy.ndarray
+        2D image array
+    peaks : numpy.ndarray
+        Peak coordinates as (row, col) pairs
+    x_size : float, default=4
+        Size of the X marker
+    linewidth : float, default=0.6
+        Thickness of the X lines
     """
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(10, 8))
     ax.imshow(image, cmap='gray')
     
     if len(peaks) > 0:
         rows, cols = peaks[:, 0], peaks[:, 1]
         ax.plot(cols, rows, 'rx', markersize=x_size, mew=linewidth)
+        ax.set_title(f'Detected Peaks: {len(peaks)} found')
+    else:
+        ax.set_title('No peaks detected')
 
     ax.set_axis_off()
     plt.tight_layout()

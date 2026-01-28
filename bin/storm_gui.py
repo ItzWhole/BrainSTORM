@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-STORM Microscopy GUI Application - Fixed Version
+STORM Microscopy GUI Application - Time Series Analysis Version
 
-A user-friendly graphical interface for STORM microscopy analysis with
-improved file browsing and Windows path handling.
+A comprehensive GUI for STORM microscopy analysis with deep learning-based 
+height regression and time series processing capabilities.
 
 Author: ItzWhole
 """
@@ -11,13 +11,11 @@ Author: ItzWhole
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 import threading
-import queue
 import os
 import sys
 from pathlib import Path
 import logging
 from typing import Optional, List
-import json
 
 # Add storm_core to path
 brainstorm_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'BrainSTORM')
