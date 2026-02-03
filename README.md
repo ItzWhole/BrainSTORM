@@ -223,41 +223,58 @@ python ../bin/storm_gui.py
 - **Select Time Series**: Choose a multi-frame TIFF file for analysis
 - **Select Model**: Load a trained .h5 model for Z-height prediction
 - **Output CSV Location**: Specify where to save analysis results
+- **Processing Parameters**: Configure detection and filtering parameters
+  - **Sigma Small** (default: 1.2): PSF-scale smoothing (lower = sharper features)
+  - **Sigma Large** (default: 3.0): Background smoothing (higher = more background removal)
+  - **Threshold Factor** (default: 0.1): Peak detection sensitivity (lower = more sensitive)
+  - **Min Distance** (default: 4): Minimum pixels between detected peaks
+- **Frame Visualization**: Preview peak detection on individual frames
+  - **Frame Number**: Select which frame to visualize (1-based indexing)
+  - **Visualize Frame**: Display filtered frame with detected peaks overlaid
 - **Analysis Options**:
-  - **Analyze**: Process the complete time series
+  - **Analyze**: Process the complete time series with current parameters
   - **Analyze First 10 Frames**: Test mode for quick validation
   - **Stop Analysis**: Gracefully halt processing if needed
 - **Real-time Analysis Log**: Monitor progress and view detailed processing information
 
 **Time Series Analysis Workflow**:
-1. **Frame-by-frame processing**: Each frame is processed independently
-2. **Bandpass filtering**: Applied only for peak detection (enhances contrast)
-3. **Peak detection**: Finds local maxima using adaptive thresholding
-4. **ROI extraction**: Extracts regions around detected peaks
+1. **Parameter configuration**: Set bandpass filter and peak detection parameters
+2. **Frame preview** (optional): Visualize detection results on sample frames
+3. **Frame-by-frame processing**: Each frame is processed independently using configured parameters
+4. **Bandpass filtering**: Applied only for peak detection using Sigma Small/Large values
+5. **Peak detection**: Finds local maxima using Threshold Factor and Min Distance
+6. **ROI extraction**: Extracts regions around detected peaks
    - Filtered ROIs used for sub-pixel localization
    - Raw ROIs fed to CNN for Z-height prediction
-5. **Sub-pixel localization**: Uses iterative weighted centroid method on filtered data
-6. **Z-height prediction**: CNN processes raw ROIs to predict axial position
-7. **CSV output**: Results saved with columns: peak_id, frame, x, y, z
+7. **Sub-pixel localization**: Uses iterative weighted centroid method on filtered data
+8. **Z-height prediction**: CNN processes raw ROIs to predict axial position
+9. **CSV output**: Results saved with columns: peak_id, frame, x, y, z
 
 **Key Features**:
+- **User-configurable parameters**: Full control over detection sensitivity and filtering
+- **Real-time parameter preview**: Visualize detection results before running full analysis
 - **Dynamic model detection**: Automatically detects expected cutout size from model input dimensions
 - **Dual ROI processing**: Uses filtered data for localization, raw data for CNN prediction
 - **Sub-pixel precision**: Achieves sub-pixel accuracy in X-Y localization
 - **Test mode**: Process only first 10 frames for quick validation
 - **Stop functionality**: Gracefully halt analysis and save partial results
-- **Comprehensive logging**: Timestamped log files for troubleshooting
+- **Comprehensive logging**: Timestamped log files with parameter values for troubleshooting
 - **Progress tracking**: Real-time progress bar and detailed status updates
 
 ### Tips for Best Results
 
 1. **Data Quality**: Use high-quality Z-stacks with clear, isolated PSF patterns
-2. **Cutout Size**: 25×25 pixels works best for typical single-molecule concentrations
-3. **Fluorophore Specificity**: Train separate models for each fluorophore type and laser power
-4. **Calibration Stack**: Ensure your training stack covers the full Z-range you want to measure
-5. **Peak Detection**: Adjust prominence sigma to match your signal-to-noise ratio
-6. **Validation**: Always validate on independent data acquired under identical conditions
-7. **Model Reuse**: Only use trained models on data acquired with the same:
+2. **Parameter Optimization**: Use frame visualization to optimize detection parameters:
+   - Start with default values (Sigma Small: 1.2, Sigma Large: 3.0, Threshold Factor: 0.1, Min Distance: 4)
+   - Adjust **Threshold Factor** first: lower values detect more peaks, higher values are more selective
+   - Tune **Sigma Small/Large** for optimal PSF enhancement: smaller sigma_small preserves finer details
+   - Set **Min Distance** based on expected peak density: increase for crowded fields
+3. **Frame Preview**: Always test parameters on representative frames before full analysis
+4. **Cutout Size**: 25×25 pixels works best for typical single-molecule concentrations
+5. **Fluorophore Specificity**: Train separate models for each fluorophore type and laser power
+6. **Calibration Stack**: Ensure your training stack covers the full Z-range you want to measure
+7. **Validation**: Always validate on independent data acquired under identical conditions
+8. **Model Reuse**: Only use trained models on data acquired with the same:
    - Fluorophore type (e.g., ATTO647N vs beads will give different results)
    - Laser power (±2 mW tolerance recommended)
    - Optical setup (same cylindrical lens orientation and position)
@@ -380,12 +397,22 @@ pip install -r requirements.txt
 - Check file permissions
 
 ### Time Series Analysis Issues
-- **No peaks detected**: Adjust bandpass filter parameters or check image quality
+- **No peaks detected**: 
+  - Use frame visualization to check detection on individual frames
+  - Lower the **Threshold Factor** (try 0.05-0.08) for more sensitive detection
+  - Adjust **Sigma Small/Large** values: try sigma_small=1.0, sigma_large=4.0
+  - Check image quality and contrast
+- **Too many false peaks**: 
+  - Increase **Threshold Factor** (try 0.15-0.2) for more selective detection
+  - Increase **Min Distance** to prevent over-detection in crowded areas
+  - Adjust **Sigma Large** to remove more background noise
+- **Parameter optimization**: Use frame visualization extensively to find optimal settings
 - **Model dimension mismatch**: Ensure time series data matches training data characteristics
 - **Memory errors**: Process smaller frame ranges or reduce image size
 - **Slow processing**: Check GPU utilization and consider reducing peak detection sensitivity
 - **Path errors**: Verify TIFF file paths are correctly formatted for WSL (use `/mnt/c/` prefix)
 - **Analysis stops unexpectedly**: Check log files in `logs/` directory for detailed error messages
+- **Visualization not working**: Ensure matplotlib backend is properly configured for display
 
 ## File Structure
 
