@@ -1113,6 +1113,71 @@ Note: Both files should be TIFF stacks with the same Z-range and parameters for 
         ttk.Entry(csv_save_selection_frame, textvariable=self.csv_save_var, width=70).pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(csv_save_selection_frame, text="Browse", command=self.browse_csv_save_location).pack(side=tk.LEFT)
         
+        # Processing Parameters
+        params_frame = ttk.LabelFrame(ts_frame, text="Processing Parameters", padding=10)
+        params_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # Create two columns for parameters
+        params_left = ttk.Frame(params_frame)
+        params_left.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 20))
+        
+        params_right = ttk.Frame(params_frame)
+        params_right.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        # Left column parameters
+        # Sigma Small
+        sigma_small_frame = ttk.Frame(params_left)
+        sigma_small_frame.pack(fill=tk.X, pady=2)
+        ttk.Label(sigma_small_frame, text="Sigma Small:", width=15).pack(side=tk.LEFT)
+        self.ts_sigma_small_var = tk.DoubleVar(value=1.2)
+        sigma_small_entry = ttk.Entry(sigma_small_frame, textvariable=self.ts_sigma_small_var, width=8)
+        sigma_small_entry.pack(side=tk.LEFT, padx=(5, 10))
+        ttk.Label(sigma_small_frame, text="PSF-scale smoothing (lower = sharper)", font=('TkDefaultFont', 8)).pack(side=tk.LEFT)
+        
+        # Sigma Large
+        sigma_large_frame = ttk.Frame(params_left)
+        sigma_large_frame.pack(fill=tk.X, pady=2)
+        ttk.Label(sigma_large_frame, text="Sigma Large:", width=15).pack(side=tk.LEFT)
+        self.ts_sigma_large_var = tk.DoubleVar(value=3.0)
+        sigma_large_entry = ttk.Entry(sigma_large_frame, textvariable=self.ts_sigma_large_var, width=8)
+        sigma_large_entry.pack(side=tk.LEFT, padx=(5, 10))
+        ttk.Label(sigma_large_frame, text="Background smoothing (higher = more removal)", font=('TkDefaultFont', 8)).pack(side=tk.LEFT)
+        
+        # Right column parameters
+        # Threshold Factor
+        threshold_frame = ttk.Frame(params_right)
+        threshold_frame.pack(fill=tk.X, pady=2)
+        ttk.Label(threshold_frame, text="Threshold Factor:", width=15).pack(side=tk.LEFT)
+        self.ts_threshold_factor_var = tk.DoubleVar(value=0.1)
+        threshold_entry = ttk.Entry(threshold_frame, textvariable=self.ts_threshold_factor_var, width=8)
+        threshold_entry.pack(side=tk.LEFT, padx=(5, 10))
+        ttk.Label(threshold_frame, text="Peak detection sensitivity (lower = more sensitive)", font=('TkDefaultFont', 8)).pack(side=tk.LEFT)
+        
+        # Min Distance
+        min_dist_frame = ttk.Frame(params_right)
+        min_dist_frame.pack(fill=tk.X, pady=2)
+        ttk.Label(min_dist_frame, text="Min Distance:", width=15).pack(side=tk.LEFT)
+        self.ts_min_distance_var = tk.IntVar(value=4)
+        min_dist_entry = ttk.Entry(min_dist_frame, textvariable=self.ts_min_distance_var, width=8)
+        min_dist_entry.pack(side=tk.LEFT, padx=(5, 10))
+        ttk.Label(min_dist_frame, text="Minimum pixels between peaks", font=('TkDefaultFont', 8)).pack(side=tk.LEFT)
+        
+        # Frame Visualization Section
+        viz_frame = ttk.LabelFrame(ts_frame, text="Frame Visualization", padding=10)
+        viz_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        viz_controls_frame = ttk.Frame(viz_frame)
+        viz_controls_frame.pack(fill=tk.X)
+        
+        ttk.Label(viz_controls_frame, text="Frame Number:", width=12).pack(side=tk.LEFT)
+        self.ts_frame_number_var = tk.IntVar(value=1)
+        frame_entry = ttk.Entry(viz_controls_frame, textvariable=self.ts_frame_number_var, width=8)
+        frame_entry.pack(side=tk.LEFT, padx=(5, 10))
+        
+        ttk.Button(viz_controls_frame, text="Visualize Frame", command=self.visualize_ts_frame).pack(side=tk.LEFT, padx=(0, 10))
+        
+        ttk.Label(viz_controls_frame, text="Preview peak detection on selected frame", font=('TkDefaultFont', 8)).pack(side=tk.LEFT)
+        
         # Analysis buttons
         analyze_frame = ttk.Frame(ts_frame)
         analyze_frame.pack(fill=tk.X, padx=10, pady=10)
@@ -1348,7 +1413,9 @@ Note: This process may take several minutes depending on the number of frames an
         # Start analysis in separate thread
         self.ts_analysis_thread = threading.Thread(
             target=self.time_series_analysis_thread,
-            args=(ts_file, model_file, csv_file),
+            args=(ts_file, model_file, csv_file, None, 
+                  self.ts_sigma_small_var.get(), self.ts_sigma_large_var.get(),
+                  self.ts_threshold_factor_var.get(), self.ts_min_distance_var.get()),
             daemon=True
         )
         self.ts_analysis_thread.start()
@@ -1394,7 +1461,9 @@ Note: This process may take several minutes depending on the number of frames an
         # Start analysis in separate thread (test mode - first 10 frames)
         self.ts_analysis_thread = threading.Thread(
             target=self.time_series_analysis_thread,
-            args=(ts_file, model_file, test_csv_file, 10),  # Limit to 10 frames
+            args=(ts_file, model_file, test_csv_file, 10,  # Limit to 10 frames
+                  self.ts_sigma_small_var.get(), self.ts_sigma_large_var.get(),
+                  self.ts_threshold_factor_var.get(), self.ts_min_distance_var.get()),
             daemon=True
         )
         self.ts_analysis_thread.start()
@@ -1403,9 +1472,70 @@ Note: This process may take several minutes depending on the number of frames an
         """Stop the current time series analysis"""
         self.ts_analysis_stop_flag = True
         self.ts_log_message("STOPPING: Analysis stop requested by user...")
+    
+    def visualize_ts_frame(self):
+        """Visualize peak detection on a specific frame from time series"""
+        ts_file = self.ts_file_var.get()
+        frame_number = self.ts_frame_number_var.get()
+        
+        if not ts_file or not os.path.exists(ts_file):
+            messagebox.showerror("Error", "Please select a valid time series TIFF file first")
+            return
+        
+        try:
+            # Import detection functions
+            sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+            from detectionalgo import bandpass_filter, find_local_peaks, robust_max, show_peaks
+            import matplotlib.pyplot as plt
+            
+            # Load the time series
+            with tiff.TiffFile(ts_file) as tif:
+                time_series = tif.asarray()
+            
+            if len(time_series.shape) != 3:
+                messagebox.showerror("Error", f"Expected 3D time series, got shape {time_series.shape}")
+                return
+            
+            n_frames = time_series.shape[0]
+            
+            # Validate frame number (convert to 0-based)
+            if frame_number < 1 or frame_number > n_frames:
+                messagebox.showerror("Error", f"Frame number must be between 1 and {n_frames}")
+                return
+            
+            frame_idx = frame_number - 1  # Convert to 0-based
+            frame = time_series[frame_idx]
+            
+            # Get parameters from UI
+            sigma_small = self.ts_sigma_small_var.get()
+            sigma_large = self.ts_sigma_large_var.get()
+            threshold_factor = self.ts_threshold_factor_var.get()
+            min_distance = self.ts_min_distance_var.get()
+            
+            # Apply bandpass filter
+            filtered_frame = bandpass_filter(frame, sigma_small=sigma_small, sigma_large=sigma_large)
+            
+            # Find peaks
+            threshold = threshold_factor * robust_max(filtered_frame, k=10)
+            peaks = find_local_peaks(filtered_frame, threshold=threshold, min_distance=min_distance)
+            
+            # Show visualization
+            show_peaks(filtered_frame, peaks)
+            
+            # Log the results
+            self.ts_log_message(f"Frame {frame_number} visualization:")
+            self.ts_log_message(f"  Parameters: sigma_small={sigma_small}, sigma_large={sigma_large}")
+            self.ts_log_message(f"  Parameters: threshold_factor={threshold_factor}, min_distance={min_distance}")
+            self.ts_log_message(f"  Found {len(peaks)} peaks with threshold={threshold:.3f}")
+            
+        except Exception as e:
+            error_msg = f"Error visualizing frame: {str(e)}"
+            messagebox.showerror("Visualization Error", error_msg)
+            self.ts_log_message(error_msg)
         self.stop_analysis_button.config(state=tk.DISABLED)
     
-    def time_series_analysis_thread(self, ts_file, model_file, csv_file, max_frames=None):
+    def time_series_analysis_thread(self, ts_file, model_file, csv_file, max_frames=None, 
+                                   sigma_small=1.2, sigma_large=3.0, threshold_factor=0.1, min_distance=4):
         """Time series analysis thread function"""
         try:
             import csv
@@ -1425,6 +1555,8 @@ Note: This process may take several minutes depending on the number of frames an
             self.ts_log_message(f"Time series file: {Path(ts_file).name}")
             self.ts_log_message(f"Model file: {Path(model_file).name}")
             self.ts_log_message(f"Output CSV: {Path(csv_file).name}")
+            self.ts_log_message(f"Parameters: sigma_small={sigma_small}, sigma_large={sigma_large}")
+            self.ts_log_message(f"Parameters: threshold_factor={threshold_factor}, min_distance={min_distance}")
             
             # Load the trained model
             self.ts_log_message("Loading trained model...")
@@ -1486,11 +1618,11 @@ Note: This process may take several minutes depending on the number of frames an
                 frame = time_series[frame_idx]
                 
                 # Apply bandpass filter ONLY for peak detection
-                filtered_frame = bandpass_filter(frame, sigma_small=1.2, sigma_large=3.0)
+                filtered_frame = bandpass_filter(frame, sigma_small=sigma_small, sigma_large=sigma_large)
                 
                 # Find peaks using filtered frame
-                threshold = 0.1 * robust_max(filtered_frame, k=10)
-                peaks = find_local_peaks(filtered_frame, threshold=threshold, min_distance=4)
+                threshold = threshold_factor * robust_max(filtered_frame, k=10)
+                peaks = find_local_peaks(filtered_frame, threshold=threshold, min_distance=min_distance)
                 
                 if len(peaks) == 0:
                     self.ts_log_message(f"  No peaks found in frame {frame_idx + 1}")
