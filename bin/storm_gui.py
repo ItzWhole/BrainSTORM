@@ -11,6 +11,7 @@ Author: ItzWhole
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 import threading
+import queue
 import os
 import sys
 from pathlib import Path
@@ -18,7 +19,8 @@ import logging
 from typing import Optional, List
 
 # Add storm_core to path
-brainstorm_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'BrainSTORM')
+brainstorm_dir = os.path.dirname(os.path.abspath(__file__))  # Get the bin directory
+brainstorm_dir = os.path.dirname(brainstorm_dir)  # Go up to BrainSTORM directory
 sys.path.append(brainstorm_dir)
 
 try:
@@ -31,6 +33,7 @@ try:
     import numpy as np
     import tifffile as tiff
     import tensorflow as tf
+    import matplotlib.pyplot as plt
     
     # Auto-fix CUDA library path issues
     def setup_cuda_environment():
@@ -1486,7 +1489,6 @@ Note: This process may take several minutes depending on the number of frames an
             # Import detection functions
             sys.path.append(os.path.dirname(os.path.abspath(__file__)))
             from detectionalgo import bandpass_filter, find_local_peaks, robust_max, show_peaks
-            import matplotlib.pyplot as plt
             
             # Load the time series
             with tiff.TiffFile(ts_file) as tif:

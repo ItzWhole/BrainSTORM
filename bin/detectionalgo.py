@@ -51,14 +51,17 @@ def bandpass_filter(frame, sigma_small=1.2, sigma_large=6.0):
     """
     Apply band-pass filter using Difference of Gaussians (DoG) for PSF enhancement.
 
+    This function enhances PSF features while suppressing background noise by
+    subtracting a large-scale smoothed version from a small-scale smoothed version.
+
     Parameters
     ----------
     frame : numpy.ndarray
         Raw image frame
     sigma_small : float, default=1.2
-        Gaussian sigma for PSF-scale smoothing
+        Gaussian sigma for PSF-scale smoothing (smaller values preserve finer details)
     sigma_large : float, default=6.0
-        Gaussian sigma for background smoothing
+        Gaussian sigma for background smoothing (larger values remove more background)
 
     Returns
     -------
@@ -67,7 +70,7 @@ def bandpass_filter(frame, sigma_small=1.2, sigma_large=6.0):
     """
     frame = frame.astype(np.float32)
     
-    # Apply Gaussian filters
+    # Apply Gaussian filters efficiently
     high_pass = gaussian_filter(frame, sigma=sigma_small)
     low_pass = gaussian_filter(frame, sigma=sigma_large)
     
