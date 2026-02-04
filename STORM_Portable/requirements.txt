@@ -1,0 +1,22 @@
+# STORM Microscopy Application Requirements
+
+# Core scientific computing
+numpy>=1.21.0
+scipy>=1.7.0
+matplotlib>=3.5.0
+pandas>=1.3.0
+
+# Image processing
+tifffile>=2021.7.2
+scikit-image>=0.18.0
+
+# Machine learning
+tensorflow>=2.8.0
+scikit-learn>=1.0.0
+
+# Utilities
+h5py>=3.1.0
+pathlib2>=2.3.0
+
+# Optional: For enhanced performance
+# cupy-cuda11x>=9.0.0  # Uncomment for CUDA acceleration

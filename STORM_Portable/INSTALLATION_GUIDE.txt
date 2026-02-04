@@ -1,0 +1,95 @@
+STORM Analysis - Portable Installation Guide
+==========================================
+
+🎯 GOAL: Get STORM Analysis running with minimal setup
+
+📋 PREREQUISITES (One-time setup):
+1. Windows 10/11 (64-bit)
+2. WSL2 with Ubuntu 20.04
+3. NVIDIA drivers (for GPU acceleration)
+
+🚀 QUICK SETUP (if WSL2 not installed):
+
+Step 1: Install WSL2
+-------------------
+1. Open PowerShell as Administrator
+2. Run: wsl --install -d Ubuntu-20.04
+3. Restart computer when prompted
+4. Set up Ubuntu username/password when first launched
+
+Step 2: Install NVIDIA Drivers (Optional but Recommended)
+--------------------------------------------------------
+1. Visit: https://www.nvidia.com/drivers/
+2. Download and install latest drivers
+3. Restart computer
+
+Step 3: Setup Dependencies
+-------------------------
+1. Double-click "setup_dependencies.bat"
+2. Wait for installation to complete (5-10 minutes)
+
+🎮 RUNNING THE APPLICATION:
+
+Option A: Interactive Launcher (Recommended)
+------------------------------------------
+1. Double-click "STORM_Launcher.bat"
+2. Choose option [1] to launch
+3. The launcher will check your system automatically
+
+Option B: Direct Launch
+----------------------
+1. Double-click "launch_storm.bat"
+2. Application will start directly
+
+📁 WHAT'S INCLUDED:
+
+Core Files:
+- STORM_Analysis (561MB) - Main executable
+- STORM_Launcher.bat - Interactive launcher with system checks
+- launch_storm.bat - Simple direct launcher
+
+Setup Files:
+- setup_dependencies.bat - One-time dependency installer
+- requirements.txt - Python package list
+
+Documentation:
+- README.txt - Quick start guide
+- DOCUMENTATION.md - Complete user manual
+- VERSION.txt - Build information
+- INSTALLATION_GUIDE.txt - This file
+
+🔧 TROUBLESHOOTING:
+
+Problem: "WSL not found"
+Solution: Install WSL2 using Step 1 above
+
+Problem: "Ubuntu not found"
+Solution: Run "wsl --install -d Ubuntu-20.04" in PowerShell
+
+Problem: "No GPU detected"
+Solution: Install NVIDIA drivers from nvidia.com/drivers
+
+Problem: Application won't start
+Solution: Run setup_dependencies.bat first
+
+Problem: Slow performance
+Solution: Ensure NVIDIA drivers are installed for GPU acceleration
+
+🎯 FIRST RUN CHECKLIST:
+□ WSL2 installed
+□ Ubuntu 20.04 available in WSL
+□ NVIDIA drivers installed (optional)
+□ Dependencies setup completed
+□ STORM_Launcher.bat runs successfully
+
+💡 TIPS:
+- Use the interactive launcher for best experience
+- Check system requirements before first run
+- GPU acceleration significantly improves performance
+- All data processing happens locally - no internet required
+- The application creates log files for troubleshooting
+
+🆘 NEED HELP?
+Check DOCUMENTATION.md for detailed usage instructions and troubleshooting.
+
+Happy analyzing! 🔬✨

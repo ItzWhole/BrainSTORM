@@ -1,0 +1,33 @@
+STORM Microscopy Analysis - Portable Edition
+Version: Time Series Analysis v3
+Build Date: February 4, 2026
+Build Type: PyInstaller Standalone Executable
+
+Features:
+- Complete STORM microscopy workflow
+- Deep learning Z-height prediction
+- Time series analysis with parameter controls
+- Frame visualization and preview
+- GPU acceleration support
+- Portable deployment
+
+System Requirements:
+- Windows 10/11
+- WSL2 with Ubuntu 20.04
+- NVIDIA GPU (recommended)
+- 8GB RAM minimum, 16GB recommended
+
+Files Included:
+- STORM_Analysis: Main executable (Linux binary for WSL) - BUILD REQUIRED
+- STORM_Launcher.bat: Interactive launcher with system checks
+- launch_storm.bat: Simple launcher script
+- setup_dependencies.bat: Dependency installer
+- README.txt: Quick start guide
+- DOCUMENTATION.md: Complete documentation
+- requirements.txt: Python dependencies list
+- VERSION.txt: This file
+- BUILD_INSTRUCTIONS.md: How to build the executable
+- .gitignore: Git ignore rules for large files
+
+Note: The STORM_Analysis executable (~535MB) is not included in git due to 
+GitHub's 100MB file size limit. See BUILD_INSTRUCTIONS.md for build steps.

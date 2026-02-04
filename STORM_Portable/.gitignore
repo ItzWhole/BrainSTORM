@@ -1,0 +1,7 @@
+# Exclude large executable from git (>100MB GitHub limit)
+STORM_Analysis
+
+# Note: The STORM_Analysis executable can be built using:
+# pyinstaller storm_gui.spec
+# 
+# Or downloaded from the releases page when available
