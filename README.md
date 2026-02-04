@@ -2,6 +2,23 @@
 
 A deep learning application for axial (Z-height) localization of point emitters in astigmatic STORM (Stochastic Optical Reconstruction Microscopy) using convolutional neural networks.
 
+## 🚀 New in v4.0.0: Portable Distribution
+
+**STORM Analysis is now available as a standalone executable!** No Python installation required.
+
+### Quick Start (Portable Version)
+1. **Download** or build the portable package from `STORM_Portable/`
+2. **Double-click** `STORM_Launcher.bat` for interactive setup
+3. **Follow** the automatic system checks and installation
+4. **Start analyzing** - complete GUI with all features ready to use
+
+### Distribution Options
+- **🔧 Source Installation**: Full development environment (existing method)
+- **📦 Portable Executable**: One-click deployment for end users (NEW!)
+- **🎯 Target Users**: Research labs, academic institutions, commercial facilities
+
+See [Portable Distribution Guide](#portable-distribution) for complete setup instructions.
+
 ## What This Application Does
 
 This application trains a specialized convolutional neural network (CNN) to predict the axial position (Z-height) of fluorescent point emitters from their astigmatic Point Spread Functions (PSFs). 
@@ -90,7 +107,74 @@ The CNN consists of:
 - **Storage**: 5GB free space for environment and models
 - **NVIDIA Drivers**: Latest drivers from NVIDIA website (required for WSL GPU support)
 
-## Installation
+## Portable Distribution
+
+**🎯 For End Users: One-Click Deployment**
+
+The portable version provides a complete standalone application that requires minimal setup. Perfect for research labs, academic institutions, and users without Python expertise.
+
+### System Requirements (Portable)
+- **Windows 10/11** (64-bit)
+- **WSL2 with Ubuntu 20.04** (auto-installable)
+- **NVIDIA GPU + Drivers** (recommended for performance)
+- **8GB RAM** minimum, 16GB recommended
+
+### Quick Setup (Portable)
+
+#### Option 1: Use Pre-built Package
+1. **Navigate** to the `STORM_Portable/` folder
+2. **Double-click** `STORM_Launcher.bat`
+3. **Follow** the interactive setup menu
+4. **Choose option [1]** to launch the application
+
+#### Option 2: Build Locally
+```bash
+# Prerequisites: WSL2 with Ubuntu 20.04 and Python environment
+cd BrainSTORM
+source storm_env/bin/activate
+pip install pyinstaller
+pyinstaller storm_gui.spec
+cp dist/STORM_Analysis STORM_Portable/
+```
+
+### Portable Package Contents
+- **`STORM_Analysis`** - Standalone executable (~535MB with all dependencies)
+- **`STORM_Launcher.bat`** - Interactive launcher with system validation
+- **`launch_storm.bat`** - Simple direct launcher
+- **`setup_dependencies.bat`** - Automated dependency installer
+- **Complete documentation** - Installation guides, user manual, build instructions
+
+### Portable Features
+- ✅ **No Python installation required** - Everything bundled
+- ✅ **Automatic system checks** - WSL2, GPU detection, error guidance
+- ✅ **Professional launchers** - Interactive menu and direct launch options
+- ✅ **Complete functionality** - All Time Series Analysis v3 features included
+- ✅ **Distribution ready** - Share as zip file, users extract and run
+- ✅ **Graceful fallbacks** - CPU mode if no GPU detected
+
+### First-Time Setup (Portable)
+1. **Install WSL2** (if not already installed):
+   ```powershell
+   # Run in PowerShell as Administrator
+   wsl --install -d Ubuntu-20.04
+   ```
+2. **Install NVIDIA drivers** from [nvidia.com/drivers](https://www.nvidia.com/drivers/) (optional but recommended)
+3. **Run setup** by double-clicking `setup_dependencies.bat` (one-time only)
+4. **Launch application** using `STORM_Launcher.bat`
+
+### Troubleshooting (Portable)
+- **"WSL not found"**: Install WSL2 using the command above
+- **"No GPU detected"**: Install NVIDIA drivers and restart
+- **Application won't start**: Run `setup_dependencies.bat` first
+- **Slow performance**: Ensure NVIDIA drivers are installed for GPU acceleration
+
+For detailed instructions, see `STORM_Portable/INSTALLATION_GUIDE.txt`.
+
+## Installation (Source Code)
+
+**🔧 For Developers: Full Development Environment**
+
+This method provides complete source code access and development capabilities. Choose this if you want to modify the code, contribute to development, or need the full Python environment.
 
 ### 1. Enable WSL2 and Install Ubuntu
 
@@ -181,12 +265,21 @@ print('SUCCESS: STORM core modules imported successfully')
 
 ### Launch the Application
 
+#### Portable Version (Recommended for End Users)
+```bash
+# Navigate to portable folder and double-click launcher
+cd STORM_Portable
+# Double-click: STORM_Launcher.bat (interactive menu)
+# OR Double-click: launch_storm.bat (direct launch)
+```
+
+#### Source Installation (For Developers)
 ```bash
 # Activate environment
 source storm_env/bin/activate
 
 # Launch GUI
-python ../bin/storm_gui.py
+python bin/storm_gui.py
 ```
 
 ### Workflow
@@ -425,11 +518,22 @@ BrainSTORM/
 │   ├── data_processing.py    # TIFF processing, peak detection, PSF extraction
 │   ├── neural_network.py     # CNN architecture and training routines
 │   └── evaluation.py         # Model evaluation and visualization
+├── STORM_Portable/           # 🆕 Portable distribution package
+│   ├── STORM_Analysis        # Standalone executable (~535MB, build required)
+│   ├── STORM_Launcher.bat    # Interactive launcher with system checks
+│   ├── launch_storm.bat      # Simple direct launcher
+│   ├── setup_dependencies.bat # Automated dependency installer
+│   ├── BUILD_INSTRUCTIONS.md # How to build the executable
+│   ├── INSTALLATION_GUIDE.txt # Complete setup guide
+│   ├── README.txt            # Quick start guide
+│   ├── DOCUMENTATION.md      # User manual (copy of main README)
+│   └── VERSION.txt           # Build and version information
 ├── brainstorm_original.py    # Original research code (for reference)
+├── storm_gui.spec            # 🆕 PyInstaller build configuration
 ├── storm_env/                # Python virtual environment
 ├── logs/                     # Application logs
 ├── requirements.txt          # Python dependencies
-└── README.md                # This file
+└── README.md                 # This file
 ```
 
 ## Model Output
@@ -439,6 +543,41 @@ Trained models (.h5 format) include metadata:
 - **Stack dimensions**: Number of Z-slices used for training
 - **Model architecture**: Layer configuration for reproducibility
 - **Normalization scheme**: Z-heights normalized to [0,1] using fixed -2000 to +2000 nm range
+
+## Version History & Distribution
+
+### v4.0.0 - Portable Distribution Framework (Current)
+- **🚀 Major Release**: Complete standalone executable distribution
+- **📦 Portable Package**: One-click deployment for end users
+- **🔧 Professional Launchers**: Interactive and direct launch options
+- **📚 Comprehensive Documentation**: Installation guides and user manuals
+- **🎯 Target Audience**: Research labs, academic institutions, commercial facilities
+- **💡 Key Innovation**: Transforms from developer tool to professional research software
+
+### v3.x - Time Series Analysis
+- **⚡ Time Series Processing**: Frame-by-frame analysis with parameter controls
+- **🎛️ User Controls**: Configurable bandpass filtering and peak detection
+- **👁️ Frame Visualization**: Real-time parameter preview and optimization
+- **📊 Enhanced Logging**: Comprehensive analysis tracking and troubleshooting
+
+### v2.x - Core Functionality  
+- **🧠 Deep Learning Pipeline**: CNN-based Z-height prediction
+- **🔬 STORM Workflow**: Complete microscopy analysis pipeline
+- **⚙️ Multi-stage Training**: Configurable training blocks and parameters
+
+### Distribution Methods
+
+#### 🎯 **Portable Executable** (Recommended for End Users)
+- **Target**: Research labs, non-technical users, quick deployment
+- **Setup**: Double-click launcher, automatic system checks
+- **Size**: ~535MB standalone package with all dependencies
+- **Requirements**: Windows + WSL2 (auto-installable)
+
+#### 🔧 **Source Installation** (For Developers)
+- **Target**: Developers, researchers who need code access
+- **Setup**: Manual Python environment, dependency installation
+- **Size**: ~2GB with full development environment
+- **Requirements**: Python expertise, manual configuration
 
 ## Limitations and Considerations
 
