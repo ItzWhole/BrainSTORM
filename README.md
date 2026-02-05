@@ -67,19 +67,15 @@ STORM achieves nanometer-scale resolution by sequentially activating and localiz
 - Uses CNN with anisotropic kernels (3×3, 3×5, 5×3) to capture directional deformations
 - Learns complex PSF patterns beyond Gaussian approximations
 - **Advantages**:
-  - Works across ±2000 nm range (3× larger)
+  - Works across ±2000 nm range (3× larger than piccasso)
   - Consistent ~117 nm error across entire range
   - Better handles non-Gaussian PSF shapes at extremes
 
 ### Model Architecture
 
-The CNN consists of:
-1. **Initial block**: 64 filters (5×5 kernel) for low-level feature extraction
-2. **Multi-directional blocks**: Three parallel convolutional paths per block
-   - Standard path: 3×3 kernels
-   - Horizontal path: 3×5 kernels (captures X-elongation)
-   - Vertical path: 5×3 kernels (captures Y-elongation)
-3. **Dense layers**: Global average pooling → 256 neurons → single Z-height output
+The CNN consists of the following architecture
+   <img width="995" height="665" alt="image" src="https://github.com/user-attachments/assets/997ae82a-5529-4b09-8916-111765ac4063" />
+
 
 **Training strategy**:
 - Stage 1: 100 epochs with Huber loss (δ=0.06, ~240 nm) for coarse learning
