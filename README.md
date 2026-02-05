@@ -2,19 +2,29 @@
 
 A deep learning application for axial (Z-height) localization of point emitters in astigmatic STORM (Stochastic Optical Reconstruction Microscopy) using convolutional neural networks.
 
-## 🚀 New in v4.0.0: Portable Distribution
+## 🚀 New in v4.1.0: Cross-Platform Support
 
-**STORM Analysis is now available as a standalone executable!** No Python installation required.
+**STORM Analysis now runs on both Windows and Linux!** Native Linux support added.
 
-### Quick Start (Portable Version)
+### Quick Start
+
+#### Windows Users
 1. **Download** or build the portable package from `STORM_Portable/`
 2. **Double-click** `STORM_Launcher.bat` for interactive setup
 3. **Follow** the automatic system checks and installation
 4. **Start analyzing** - complete GUI with all features ready to use
 
+#### Linux Users
+1. **Navigate** to `STORM_Portable/` directory
+2. **Run** `chmod +x launch_storm.sh`
+3. **Execute** `./launch_storm.sh`
+4. **Enjoy native performance** - no virtualization overhead!
+
 ### Distribution Options
 - **🔧 Source Installation**: Full development environment (existing method)
-- **📦 Portable Executable**: One-click deployment for end users (NEW!)
+- **📦 Portable Executable**: One-click deployment for end users
+- **🪟 Windows Support**: Via WSL2 (Windows Subsystem for Linux)
+- **🐧 Linux Support**: Native execution with better performance (NEW!)
 - **🎯 Target Users**: Research labs, academic institutions, commercial facilities
 
 See [Portable Distribution Guide](#portable-distribution) for complete setup instructions.
@@ -109,21 +119,34 @@ The CNN consists of the following architecture
 
 The portable version provides a complete standalone application that requires minimal setup. Perfect for research labs, academic institutions, and users without Python expertise.
 
+**🌍 Cross-Platform Support:**
+- **Windows 10/11**: Runs via WSL2 (Windows Subsystem for Linux)
+- **Linux**: Native execution with better performance (Ubuntu 20.04+, Debian 10+)
+
 ### System Requirements (Portable)
+
+#### Windows
 - **Windows 10/11** (64-bit)
 - **WSL2 with Ubuntu 20.04** (auto-installable)
 - **NVIDIA GPU + Drivers** (recommended for performance)
 - **8GB RAM** minimum, 16GB recommended
 
+#### Linux
+- **Ubuntu 20.04+, Debian 10+**, or similar distribution
+- **X11 display server** (for GUI)
+- **Python 3.8+ with tkinter** (usually pre-installed)
+- **NVIDIA GPU + Drivers** (optional, for GPU acceleration)
+- **8GB RAM** minimum, 16GB recommended
+
 ### Quick Setup (Portable)
 
-#### Option 1: Use Pre-built Package
+#### Windows: Option 1 - Use Pre-built Package
 1. **Navigate** to the `STORM_Portable/` folder
 2. **Double-click** `STORM_Launcher.bat`
 3. **Follow** the interactive setup menu
 4. **Choose option [1]** to launch the application
 
-#### Option 2: Build Locally
+#### Windows: Option 2 - Build Locally
 ```bash
 # Prerequisites: WSL2 with Ubuntu 20.04 and Python environment
 cd BrainSTORM
@@ -133,20 +156,46 @@ pyinstaller storm_gui.spec
 cp dist/STORM_Analysis STORM_Portable/
 ```
 
+#### Linux: Quick Start
+```bash
+# Navigate to portable folder
+cd STORM_Portable
+
+# Make launcher executable
+chmod +x launch_storm.sh
+
+# Launch application
+./launch_storm.sh
+```
+
+#### Linux: Install Dependencies (if needed)
+```bash
+# Install system dependencies
+sudo apt update
+sudo apt install python3-tk libgl1-mesa-glx
+
+# For GPU support (optional)
+sudo ubuntu-drivers autoinstall
+```
+
 ### Portable Package Contents
 - **`STORM_Analysis`** - Standalone executable (~535MB with all dependencies)
-- **`STORM_Launcher.bat`** - Interactive launcher with system validation
-- **`launch_storm.bat`** - Simple direct launcher
-- **`setup_dependencies.bat`** - Automated dependency installer
+- **`STORM_Launcher.bat`** - Interactive launcher for Windows
+- **`launch_storm.bat`** - Simple direct launcher for Windows
+- **`launch_storm.sh`** - Native launcher for Linux (NEW!)
+- **`setup_dependencies.bat`** - Automated dependency installer (Windows)
 - **Complete documentation** - Installation guides, user manual, build instructions
+- **`README_LINUX.txt`** - Linux-specific setup guide (NEW!)
 
 ### Portable Features
 - ✅ **No Python installation required** - Everything bundled
+- ✅ **Cross-platform support** - Windows (WSL2) and Linux (native)
 - ✅ **Automatic system checks** - WSL2, GPU detection, error guidance
 - ✅ **Professional launchers** - Interactive menu and direct launch options
 - ✅ **Complete functionality** - All Time Series Analysis v3 features included
 - ✅ **Distribution ready** - Share as zip file, users extract and run
 - ✅ **Graceful fallbacks** - CPU mode if no GPU detected
+- ✅ **Better Linux performance** - Native execution without virtualization overhead
 
 ### First-Time Setup (Portable)
 1. **Install WSL2** (if not already installed):
@@ -516,12 +565,14 @@ BrainSTORM/
 │   └── evaluation.py         # Model evaluation and visualization
 ├── STORM_Portable/           # 🆕 Portable distribution package
 │   ├── STORM_Analysis        # Standalone executable (~535MB, build required)
-│   ├── STORM_Launcher.bat    # Interactive launcher with system checks
-│   ├── launch_storm.bat      # Simple direct launcher
-│   ├── setup_dependencies.bat # Automated dependency installer
+│   ├── STORM_Launcher.bat    # Interactive launcher with system checks (Windows)
+│   ├── launch_storm.bat      # Simple direct launcher (Windows)
+│   ├── launch_storm.sh       # Native launcher for Linux (NEW!)
+│   ├── setup_dependencies.bat # Automated dependency installer (Windows)
 │   ├── BUILD_INSTRUCTIONS.md # How to build the executable
-│   ├── INSTALLATION_GUIDE.txt # Complete setup guide
-│   ├── README.txt            # Quick start guide
+│   ├── INSTALLATION_GUIDE.txt # Complete setup guide (Windows)
+│   ├── README.txt            # Quick start guide (Windows)
+│   ├── README_LINUX.txt      # Linux-specific setup guide (NEW!)
 │   ├── DOCUMENTATION.md      # User manual (copy of main README)
 │   └── VERSION.txt           # Build and version information
 ├── brainstorm_original.py    # Original research code (for reference)
@@ -542,7 +593,15 @@ Trained models (.h5 format) include metadata:
 
 ## Version History & Distribution
 
-### v4.0.0 - Portable Distribution Framework (Current)
+### v4.1.0 - Native Linux Support (Current)
+- **🐧 Linux Compatibility**: Native execution on Linux systems
+- **⚡ Better Performance**: No virtualization overhead on Linux
+- **🚀 Cross-Platform**: Single executable works on Windows (WSL2) and Linux (native)
+- **📚 Linux Documentation**: Complete setup guide for Linux users
+- **🔧 Linux Launcher**: Native bash launcher with system validation
+- **🎯 Expanded Reach**: HPC clusters, Linux workstations, server environments
+
+### v4.0.0 - Portable Distribution Framework
 - **🚀 Major Release**: Complete standalone executable distribution
 - **📦 Portable Package**: One-click deployment for end users
 - **🔧 Professional Launchers**: Interactive and direct launch options
@@ -565,12 +624,14 @@ Trained models (.h5 format) include metadata:
 
 #### 🎯 **Portable Executable** (Recommended for End Users)
 - **Target**: Research labs, non-technical users, quick deployment
-- **Setup**: Double-click launcher, automatic system checks
+- **Platforms**: Windows (via WSL2) + Linux (native)
+- **Setup**: Double-click launcher (Windows) or run shell script (Linux)
 - **Size**: ~535MB standalone package with all dependencies
-- **Requirements**: Windows + WSL2 (auto-installable)
+- **Requirements**: Windows + WSL2 OR Linux with X11
 
 #### 🔧 **Source Installation** (For Developers)
 - **Target**: Developers, researchers who need code access
+- **Platforms**: Any system with Python 3.8+
 - **Setup**: Manual Python environment, dependency installation
 - **Size**: ~2GB with full development environment
 - **Requirements**: Python expertise, manual configuration
